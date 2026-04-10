@@ -1,6 +1,6 @@
 Package: normref
 Title: Continuous Norming
-Version: 0.0.0.1
+Version: 0.1.1
 Authors@R: c(
 	person("Klazien", "de Vries", email = "klazien.de.vries@rug.nl", role = "aut", comment = c(ORCID = "0009-0007-9302-1562")),
  	person("Hannah", "Heister", email = "h.m.heister@rug.nl", role = "aut", comment = c(ORCID = "0009-0001-1512-5549")),	
@@ -8,20 +8,20 @@ Authors@R: c(
  	person("Lieke", "Voncken", email = "Lieke.Voncken@tilburguniversity.edu", role = "ctb", comment = c(ORCID = "0000-0002-6710-271X")),
  	person("Marieke", "Timmerman", email = "m.e.timmerman@rug.nl", role = c("aut", "cre"), comment = c(ORCID = "0000-0003-3480-5918"))
 	)
-Description: A toolbox for calculating continuous norms for psychological tests, where the norms can be age-dependent. The norms are based Generalized Additive Models for Location, Scale, and Shape (GAMLSS) for the test scores in the normative sample. The package includes functions for model selection, reliability estimation, and calculating norms, including confidence intervals. For more details, see Timmerman et al. (2021) <doi:10.1037/met0000348>. 
+Description: A toolbox for continuous norming of psychological and educational tests, supporting regression-based norming where norms can vary as a continuous function of age or another norm predictor. Norms are estimated using Generalized Additive Models for Location, Scale, and Shape (GAMLSS), enabling flexible modelling of the full score distribution in a normative sample. The package supports applications in psychometrics and psychological testing, and includes functions for model selection, reliability estimation, norm calculation, including confidence intervals, and sample size planning. For more details, see Timmerman et al. (2021) <doi:10.1037/met0000348>.
 License: GPL (>= 3)
 Encoding: UTF-8
 RoxygenNote: 7.3.3
 Depends: R (>= 3.5.0)
-Imports: gamlss, gamlss.dist, ggplot2, openxlsx2, rlang, Rdpack, stats,
-        utils, withr
+Imports: gamlss, gamlss.dist, ggplot2, lpSolve, openxlsx2, rlang,
+        Rdpack, stats, utils, withr
 RdMacros: Rdpack
 Suggests: knitr, rmarkdown, testthat (>= 3.0.0), gamlss.tr, future,
         future.apply
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2025-09-30 14:11:32 UTC; P157735
+Packaged: 2026-04-10 13:02:13 UTC; P157735
 Author: Klazien de Vries [aut] (ORCID: <https://orcid.org/0009-0007-9302-1562>),
   Hannah Heister [aut] (ORCID: <https://orcid.org/0009-0001-1512-5549>),
   Julian Urban [aut] (ORCID: <https://orcid.org/0000-0001-8886-4724>),
@@ -30,4 +30,4 @@ Author: Klazien de Vries [aut] (ORCID: <https://orcid.org/0009-0007-9302-1562>),
     <https://orcid.org/0000-0003-3480-5918>)
 Maintainer: Marieke Timmerman <m.e.timmerman@rug.nl>
 Repository: CRAN
-Date/Publication: 2025-10-06 08:40:02 UTC
+Date/Publication: 2026-04-10 13:30:03 UTC

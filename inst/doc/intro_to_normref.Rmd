@@ -2,7 +2,9 @@
 title: "How to use normref"
 author: "Marieke E. Timmerman, Klazien de Vries, and Hannah M. Heister"
 date: "`r Sys.Date()`"
-output: rmarkdown::html_vignette
+output:
+  html_document:
+    self_contained: true
 bibliography: ../inst/REFERENCES.bib  
 vignette: >
   %\VignetteIndexEntry{How to use normref}
@@ -15,16 +17,17 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
+is_not_cran <- identical(Sys.getenv("NOT_CRAN"), "true")
 ```
 
 
 
 # Introduction
 
-The `normref` package provides tools to calculate continuous norms for psychological test scores, where the norms depend on a single continuous variable, denoted as the norm predictor. Typically, the norm predictor is age. The package allows for a single norm predictor. Applying the norms results in standardized scores such as percentiles, T-scores, or IQ scores. Such standardized scores allow for norm-referenced interpretation, that is, comparing an individual’s performance to that of a relevant reference population.
+The `normref` package provides tools to calculate continuous norms for psychological test scores and do sample planning, where the norms depend on a single continuous variable. The latter is denoted as the norm predictor, which typically is age. Applying the norms results in standardized scores such as percentiles, T-scores, or IQ scores. Such standardized scores allow for norm-referenced interpretation, that is, comparing an individual’s performance to that of a relevant reference population.
 
 For example, an IQ score expresses an individual’s performance relative to the general population of the same age. To estimate such norms, `normref` requires raw scores from a representative normative sample.  
-This vignette illustrates how to derive norms from such a sample, following the approach described in a tutorial [@timmerman2021tutorial].
+This vignette illustrates how to derive norms from such a sample, following the approach described in a tutorial [@timmerman2021tutorial], and how to do sampling planning, following the appproach based on a distribution free polynomial regression model for group means [@egberink2026COTAN,@hessen2026richtlijnen].
 
 ---
   
@@ -38,7 +41,7 @@ The main workflow in `normref` consists of:
 4. Creating norm tables (`normtable_create`, `plot_normtable`)  
 5. *(Optional)* Adding confidence intervals (CIs) for normed scores based on age-dependent reliability estimates 
 
-Advanced functionality includes norming of composite scores, norms for new data, user-defined distributions, and adding CIs based on age-dependent reliability estimates.
+Advanced functionality includes: norming of composite scores, norms for new data, user-defined distributions, and sample size planning.
 
 ---
   
@@ -240,6 +243,7 @@ In the example below, we use the fictitious age-dependent reliabilities provided
 ```{r create_normtable_y14, echo=TRUE, results='hide'}
 get(data("ids_rel_data"))
 temp_file <- tempfile(fileext = ".xlsx")
+
 norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
                                       data = mydata_BCPE,
                                       age_name = "age",
@@ -257,6 +261,7 @@ norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
 Composite scores are calculated by combining multiple subtest scores, typically as the sum of their standardized scores (z-scores). To illustrate this process, we first fit a BCPE model to Test 7. Based on the wormplot inspection (not shown), the model fits the data well. Note that fitting BCPE models can be computationally intensive.
 
 ```{r modelnorms_y7, echo=TRUE, include=TRUE}
+if (is_not_cran) {
 mydata_BCPE_y7 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y7",
@@ -270,6 +275,9 @@ norm_mod_BCPE_y7 <- normtable_create(model = mod_BCPE_y7,
                                     data = mydata_BCPE_y7,
                                     age_name = "age",
                                     score_name = "shaped_score")
+} else {
+norm_mod_BCPE_y7 <- readRDS(system.file("extdata", "norm_mod_BCPE_y7.rds", package = "normref"))
+}
 ``` 
 Next, we calculate composite scores based on the norm tables of Test 7 and Test 14. The workflow is as follows:
 
@@ -390,5 +398,51 @@ norm_mod_BCPEtr34_KN  <- normtable_create(model = mod_NOtr34_KN,
                                      datarel = rel_est,
                                      normtype = "IQ")
 ```
+
+## Sample size planning for continuous norming 
+To estimate the norms, `normref` requires raw scores from a representative normative sample. In order to achieve sufficient precision, the sample size needs to be sufficiently large. For continuous norming, there are no guidelines for the minimally required sample size. For traditional norming (i.e., for a single group), there are guidelines. An approach to do sample size planning for continuous norming is to define groups, based on reasonable intervals of the norm predictor, and require at least the same estimation accuracy for each group as would be required for traditional norming [@egberink2026COTAN]. One could compute the optimal sample sizes per group under a distribution free polynomial regression model for group means, following @hessen2026richtlijnen. In the assumed continuous norming model, group means are first estimated and then smoothed using a polynomial model that regresses group means on age. The function `sample_size_poly()` determines the group sample sizes such that the precision of the estimated means (not higher-order moments) is at least as high as under traditional norming.
+
+There are two variants, one assuming homoscedasticity, and one using estimated variances per group. Before data collection, one could estimate the sample sizes assuming homoscedasticity. During and after data  collection, one could estimate using the estimated variances per group.
+
+The function requires as input the number of groups (e.g., age groups), the polynomial degree for modeling the population mean as a function of group number, the reference sample size per group under traditional norming, where typical values are 400, 300 and 200 [@egberink2026COTAN], and possibly the estimated variances of the means in each group. 
+
+Multiple optimal solutions may exist. By default, a single solution is returned, defined as the solution minimizing the difference between the largest and smallest group sample sizes. This yields a practically balanced design. Alternatively, users can inspect all optimal solutions (`solution_type = "all"`) or examine the range of optimal sample sizes per group (`solution_type = "range"`). Note that the function can take a while to compute.
+
+Now, we estimate the sample sizes for 6 groups, assuming a polynomial degree of 3, for a reference sample size per group under traditional norming of 400. In the table, the sample size per group (n) is presented for each of the 5 groups. 
+
+```{r calculate sample size homoscedasticity, echo=TRUE, include=TRUE}
+if (is_not_cran) {
+res1 <- sample_size_poly(
+  n_groups = 5,
+  poly_degree = 3,
+  n0 = 400
+)
+} else {
+res <- readRDS(system.file("extdata", "sample_size_res.rds", package = "normref"))
+res1 <- res$res1
+}
+res1
+```
+
+Here, we illustrate how to estimate the sample sizes based on sample data, assuming a polynomial degree of 2, for a reference sample size per group under traditional norming of 300. 
+
+```{r calculate sample size heteroscedasticity, echo=TRUE, include=TRUE}
+if (is_not_cran) {
+ids_data$age_group <- cut(ids_data$age, breaks = seq(6, 18, by = 1))
+v <- tapply(ids_data$y7, ids_data$age_group, var, na.rm = TRUE)
+
+res2 <- sample_size_poly(
+ n_groups = length(v),
+ poly_degree = 2,
+ n0 = 300,
+ variances = v
+ )
+} else {
+res <- readRDS(system.file("extdata", "sample_size_res.rds", package = "normref"))
+res2 <- res$res2
+}
+res2
+```
+
 
 # References

@@ -95,3 +95,110 @@ test_that("composite_shape errors if required components are missing", {
   expect_error(composite_shape(list(bad_obj1)), "missing required components")
   expect_error(composite_shape(list(bad_obj2)), "missing required components")
 })
+
+test_that("sample_size_poly: n_groups validation works", {
+  expect_error(sample_size_poly(n_groups = 0, poly_degree = 1, n0 = 10))
+  expect_error(sample_size_poly(n_groups = -1, poly_degree = 1, n0 = 10))
+  expect_error(sample_size_poly(n_groups = "three", poly_degree = 1, n0 = 10))
+  expect_error(sample_size_poly(n_groups = c(3,4), poly_degree = 1, n0 = 10))
+})
+
+test_that("sample_size_poly: n0 must be provided", {
+  expect_error(sample_size_poly(n_groups = 3, poly_degree = 1))
+})
+
+test_that("sample_size_poly: variances length must match n_groups", {
+  expect_error(sample_size_poly(n_groups = 3, poly_degree = 1, n0 = 10, variances = c(1,2)))
+})
+
+test_that("sample_size_poly: output has correct columns and row count", {
+  res <- sample_size_poly(n_groups = 3, poly_degree = c(0,1), n0 = c(10,20))
+  expected_cols <- c("n0", "group", "poly_degree", "n", "variance", 
+                     "variance_traditional", "total_n", "traditional_total_n", 
+                     "n_min", "n_max")
+  expect_true(all(expected_cols %in% colnames(res)))
+  
+  # Number of rows = n_groups * length(poly_degree) * length(n0)
+  expect_equal(nrow(res), 3 * 2 * 2)
+})
+
+test_that("sample_size_poly: LP solution respects bounds and sums", {
+  res <- sample_size_poly(n_groups = 3, poly_degree = c(0,1), n0 = c(10,20))
+  
+  # n within n_min and n_max
+  expect_true(all(res$n >= res$n_min & res$n <= res$n_max))
+  
+  # total_n equals sum of n per combination of degree and n0
+  combinations <- unique(res[, c("n0", "poly_degree")])
+  for(i in seq_len(nrow(combinations))) {
+    sub <- res[res$n0 == combinations$n0[i] & res$poly_degree == combinations$poly_degree[i], ]
+    expect_equal(sub$total_n[1], sum(sub$n))
+  }
+})
+
+test_that("sample_size_poly: multiple n0 and poly_degrees handled correctly", {
+  res <- sample_size_poly(n_groups = 3, poly_degree = c(0,1), n0 = c(10,20))
+  expect_true(all(res$n0 %in% c(10,20)))
+  expect_true(all(res$poly_degree %in% c(0,1)))
+})
+
+test_that("sample_size_poly: edge cases", {
+  # Single group
+  res1 <- sample_size_poly(n_groups = 1, poly_degree = 0, n0 = 10)
+  expect_equal(res1$n, 10)
+  expect_equal(res1$total_n, 10)
+  
+  # Polynomial degree = 0
+  res2 <- sample_size_poly(n_groups = 3, poly_degree = 0, n0 = 10)
+  expect_true(all(res2$poly_degree == 0))
+  
+  # Single n0
+  res3 <- sample_size_poly(n_groups = 3, poly_degree = 1, n0 = 10)
+  expect_equal(unique(res3$n0), 10)
+})
+
+test_that("sample_size_poly: solution_type argument works", {
+  # Balanced (default)
+  res_bal <- sample_size_poly(n_groups = 3, poly_degree = 1, n0 = 10)
+  expect_true(all(c("n0", "group", "poly_degree", "n") %in% colnames(res_bal)))
+  expect_equal(nrow(res_bal), 3)  # one solution, one row per group
+  
+  # All solutions
+  res_all <- sample_size_poly(n_groups = 3, poly_degree = 1, n0 = 10, solution_type = "all")
+  expect_true(all(c("solution_id") %in% colnames(res_all)))
+  expect_true(nrow(res_all) >= 3)  # >= 1 solution, 3 rows per solution
+  expect_true(all(res_all$n >= res_all$n_min & res_all$n <= res_all$n_max))
+  
+  # Range solution
+  res_range <- sample_size_poly(n_groups = 3, poly_degree = 1, n0 = 10, solution_type = "range")
+  expect_true(all(c("n_range", "group", "poly_degree") %in% colnames(res_range)))
+  expect_equal(nrow(res_range), 3)
+  expect_true(all(grepl("-", res_range$n_range)))  # format like "14-19"
+})
+
+test_that("sample_size_poly: balanced solution has minimal n spread", {
+  res_all <- sample_size_poly(n_groups = 4, poly_degree = 1, n0 = 10, solution_type = "all")
+  spreads <- aggregate(n ~ solution_id, res_all, function(x) max(x) - min(x))
+  
+  res_bal <- sample_size_poly(n_groups = 4, poly_degree = 1, n0 = 10, solution_type = "balanced")
+  bal_spread <- max(res_bal$n) - min(res_bal$n)
+  
+  expect_equal(bal_spread, min(spreads$n))
+})
+
+test_that("sample_size_poly: range output correctly summarizes min/max per group", {
+  res_all <- sample_size_poly(n_groups = 3, poly_degree = 1, n0 = 10, solution_type = "all")
+  res_range <- sample_size_poly(n_groups = 3, poly_degree = 1, n0 = 10, solution_type = "range")
+  
+  # Check consistency with all solutions
+  for (g in 1:3) {
+    group_n <- res_all$n[res_all$group == g]
+    expected_range <- paste0(min(group_n), "-", max(group_n))
+    expect_equal(res_range$n_range[res_range$group == g], expected_range)
+  }
+})
+
+test_that("sample_size_poly: solution_id includes poly_degree, n0, and solution number", {
+  res_all <- sample_size_poly(n_groups = 3, poly_degree = c(0,1), n0 = c(10,20), solution_type = "all")
+  expect_true(all(grepl("deg[0-9]+_n0[0-9]+_s[0-9]+", res_all$solution_id)))
+})
