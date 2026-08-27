@@ -221,7 +221,7 @@ plot_normtable <- function(normtable,
                            xlab = "Age",
                            ylab = "Percentile",
                            ...) {
-  cdf_matrix <- normtable$cdf_matrix
+  cdf_matrix <- normtable$cdf_matrix[,-1] # remove age column
   cdf_sample <- normtable$cdf_sample
   pop_age    <- normtable$pop_age
   mydata     <- normtable$data

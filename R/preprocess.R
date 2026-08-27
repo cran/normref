@@ -25,7 +25,7 @@
 #'
 #' Unexpected transformations should prompt inspection of the original data.  
 #' Note that the function does **not** assess whether the chosen family is appropriate 
-#' for the data—it only ensures compatibility.  
+#' for the data. It only ensures compatibility.  
 #'
 #' Compatible with all gamlss distributions, with the exception of distributions in the multinomial family ([gamlss::.gamlss.multin.list]).
 #' This includes user-defined distributions, such as truncated distributions.
@@ -120,15 +120,22 @@ shape_data <- function(data,
 #' Shape data for a composite scale based on normalized Z-scores
 #'
 #' @description 
-#' `composite_shape()` creates a data.frame with age values and the sum of normalized 
+#' `composite_shape()` creates a data.frame with age values and a weighted sum of normalized 
 #' z-scores from multiple NormTable objects, suitable for use as input to [fb_select()].
+#'
+#' @details
+#' The function combines normalized z-scores across multiple norm tables into a composite score.
+#' By default, scores are equally weighted. Optional weights allow differential contribution of
+#' subtests to the composite.
 #'
 #' @param normtables list of NormTable objects created by [normtable_create()]. 
 #'   Each must contain `znorm_sample` and `norm_sample`.
+#' @param weights Optional numeric vector of weights for a weighted composite score.
+#'   If `NULL` (default), the sum of subtest z-scores is used.
 #'
 #' @return A data.frame with:
-#'   - `age`: Age values from the first NormTable  
-#'   - `z_sum`: Unweighted sum of normalized z-scores across all objects
+#'   \item{age}{Age values from the first NormTable}
+#'   \item{z_sum}{Weighted sum of normalized z-scores across all objects}
 #'
 #' @seealso [shape_data()], [fb_select()], [normtable_create()]
 #'
@@ -150,13 +157,14 @@ shape_data <- function(data,
 #' composite_data <- composite_shape(list(norm1, norm2))}
 #'
 #' @export
-
-composite_shape <- function(normtables) {
+composite_shape <- function(normtables, weights = NULL) {
+  
   if (!is.list(normtables) || length(normtables) == 0) {
     stop("'normtables' must be a non-empty list of normtables")
   }
   
   required_components <- c("znorm_sample", "norm_sample")
+  
   for (i in seq_along(normtables)) {
     if (!all(required_components %in% names(normtables[[i]]))) {
       stop(sprintf(
@@ -167,16 +175,32 @@ composite_shape <- function(normtables) {
     }
   }
   
-  # Extract z-scores and sum across normtables
+  k <- length(normtables)
+  
+  # ----------------------------
+  # Handle weights
+  # ----------------------------
+  if (is.null(weights)) {
+    weights <- rep(1, k)
+  } else {
+    if (!is.numeric(weights) || length(weights) != k) {
+      stop("'weights' must be a numeric vector of length equal to normtables")
+    }
+  }
+  
+  # ----------------------------
+  # Extract z-scores
+  # ----------------------------
   z_scores <- lapply(normtables, function(x) x$znorm_sample[, 2])
-  z_sum <- Reduce(`+`, z_scores)
+  
+  # Weighted sum
+  z_sum <- Reduce(`+`, Map(`*`, z_scores, weights))
   
   data.frame(
     age = normtables[[1]]$norm_sample[, 1],
     z_sum = z_sum
   )
 }
-
 #' Sample size planning for continuous norming using polynomial regression
 #'
 #' Computes optimal sample sizes per group under a distribution free polynomial regression model
@@ -410,7 +434,7 @@ sample_size_poly <- function(
         
       } else if (solution_type == "range") {
         agg <- stats::aggregate(n ~ group, df_all,
-                         function(x) paste0(min(x), "-", max(x)))
+                                function(x) paste0(min(x), "-", max(x)))
         
         df <- data.frame(
           n0 = n0_val,

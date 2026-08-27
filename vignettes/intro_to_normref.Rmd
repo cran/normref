@@ -17,17 +17,16 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
-is_not_cran <- identical(Sys.getenv("NOT_CRAN"), "true")
 ```
 
 
 
 # Introduction
 
-The `normref` package provides tools to calculate continuous norms for psychological test scores and do sample planning, where the norms depend on a single continuous variable. The latter is denoted as the norm predictor, which typically is age. Applying the norms results in standardized scores such as percentiles, T-scores, or IQ scores. Such standardized scores allow for norm-referenced interpretation, that is, comparing an individual’s performance to that of a relevant reference population.
+The `normref` package provides tools to calculate continuous norms for psychological test scores, where the norms depend on a single continuous variable, denoted as the norm predictor. Typically, the norm predictor is age. The package allows for a single norm predictor. Applying the norms results in standardized scores such as percentiles, T-scores, or IQ scores. Such standardized scores allow for norm-referenced interpretation, that is, comparing an individual’s performance to that of a relevant reference population.
 
 For example, an IQ score expresses an individual’s performance relative to the general population of the same age. To estimate such norms, `normref` requires raw scores from a representative normative sample.  
-This vignette illustrates how to derive norms from such a sample, following the approach described in a tutorial [@timmerman2021tutorial], and how to do sampling planning, following the appproach based on a distribution free polynomial regression model for group means [@egberink2026COTAN,@hessen2026richtlijnen].
+This vignette illustrates how to derive norms from such a sample, following the approach described in a tutorial [@timmerman2021tutorial].
 
 ---
   
@@ -110,9 +109,10 @@ mod_BB_y14 <- fb_select(data = mydata_BB,
                        family = "BB",
                        selcrit = "BIC")
 ```
-The free order model selection procedure selects a second degree polynomial of age for both the $\mu$ and $\sigma$ parameters of the BB model.
+The free order model selection procedure selects a second degree polynomial of age for both the $\mu$ and $\sigma$ parameters of the BB model. Additionally, an overview of the model selection procedure can accessed in `mod_BB_y14$search_history`, which contains the polynomial degrees for all investigated models (`poly_deg`) and their corresponding selection criteria (`selcrit`). This allows the user to investigate if exists a more parsimonious model with similar model fit to the selected model.
 
 As alternative models, we also fit the BCPE and NO models.
+
 ```{r selectmodel_BCPENO_y14, echo=TRUE, include=TRUE}
 mod_BCPE_y14 <- fb_select(data = mydata_BCPE,
                          age_name = "age",
@@ -128,7 +128,6 @@ mod_NO_y14 <- fb_select(data = ids_data,
 ``` 
 
 ## Inspect model fit
-  
 
 After fitting the BB, BCPE, and NO models, we first compare their BIC values. Lower BIC values indicate better model fit.
   
@@ -171,8 +170,6 @@ gamlss::centiles(mod_BCPE_y14, cent = c(5,25,50,75,95))
 These centile plots complement worm plots and BIC comparisons by providing a direct, visual summary of the distribution of scores across ages, making it easier to assess model fit and to interpret age-dependent norms.
 
 For most distributions, the centiles function in GAMLSS works well. However, for binomial-type distributions such as the BB distribution, the standard centiles function does not always render correctly. For these cases, `centiles_bin()` provides an alternative (e.g., `centiles_bin(mod_BB_y14, xvar = age, cent = c(5,25,50,75,95))`).
-
-
 
 ## Create norm tables
 
@@ -243,7 +240,6 @@ In the example below, we use the fictitious age-dependent reliabilities provided
 ```{r create_normtable_y14, echo=TRUE, results='hide'}
 get(data("ids_rel_data"))
 temp_file <- tempfile(fileext = ".xlsx")
-
 norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
                                       data = mydata_BCPE,
                                       age_name = "age",
@@ -261,7 +257,6 @@ norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
 Composite scores are calculated by combining multiple subtest scores, typically as the sum of their standardized scores (z-scores). To illustrate this process, we first fit a BCPE model to Test 7. Based on the wormplot inspection (not shown), the model fits the data well. Note that fitting BCPE models can be computationally intensive.
 
 ```{r modelnorms_y7, echo=TRUE, include=TRUE}
-if (is_not_cran) {
 mydata_BCPE_y7 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y7",
@@ -275,9 +270,6 @@ norm_mod_BCPE_y7 <- normtable_create(model = mod_BCPE_y7,
                                     data = mydata_BCPE_y7,
                                     age_name = "age",
                                     score_name = "shaped_score")
-} else {
-norm_mod_BCPE_y7 <- readRDS(system.file("extdata", "norm_mod_BCPE_y7.rds", package = "normref"))
-}
 ``` 
 Next, we calculate composite scores based on the norm tables of Test 7 and Test 14. The workflow is as follows:
 
@@ -307,6 +299,7 @@ norm_modNO_comp <- normtable_create(modNO_comp,
                                    score_name = "z_sum",
                                    cont_cor = TRUE)
 ``` 
+
 ## Norms for a new sample of individuals
 
 It is possible to calculate normed scores directly for a new sample, using their raw scores and ages. 
@@ -331,6 +324,7 @@ Free order model selection with the `fb_select` is also available for distributi
 ```{r getdata_ids_kn_data, echo=TRUE, results='hide'}
 get(data("ids_kn_data"))
 ```
+
 To fit a truncated NO model, we first create a new distribution using the `gen.trun()` function. We specify truncation at both ends of the distribution (`type="both"`) with a minimum score of 0 and a maximum score of 34 (`par=c(0,34)`). We apply this to the NO family (`family="NO"`) and name the new distribution `tr34`, resulting in a distribution called `NOtr34`.
 
 Next, we shape the data appropriately for the truncated distribution and fit the model.
@@ -348,7 +342,6 @@ mod_NOtr34_KN <- fb_select(data = mydata_NOtr34,
                         score_name = "shaped_score",
                         family = "NOtr34")
 ```
-
 
 ## Estimating test reliability dependent on age
 
@@ -400,6 +393,7 @@ norm_mod_BCPEtr34_KN  <- normtable_create(model = mod_NOtr34_KN,
 ```
 
 ## Sample size planning for continuous norming 
+
 To estimate the norms, `normref` requires raw scores from a representative normative sample. In order to achieve sufficient precision, the sample size needs to be sufficiently large. For continuous norming, there are no guidelines for the minimally required sample size. For traditional norming (i.e., for a single group), there are guidelines. An approach to do sample size planning for continuous norming is to define groups, based on reasonable intervals of the norm predictor, and require at least the same estimation accuracy for each group as would be required for traditional norming [@egberink2026COTAN]. One could compute the optimal sample sizes per group under a distribution free polynomial regression model for group means, following @hessen2026richtlijnen. In the assumed continuous norming model, group means are first estimated and then smoothed using a polynomial model that regresses group means on age. The function `sample_size_poly()` determines the group sample sizes such that the precision of the estimated means (not higher-order moments) is at least as high as under traditional norming.
 
 There are two variants, one assuming homoscedasticity, and one using estimated variances per group. Before data collection, one could estimate the sample sizes assuming homoscedasticity. During and after data  collection, one could estimate using the estimated variances per group.
@@ -411,23 +405,17 @@ Multiple optimal solutions may exist. By default, a single solution is returned,
 Now, we estimate the sample sizes for 6 groups, assuming a polynomial degree of 3, for a reference sample size per group under traditional norming of 400. In the table, the sample size per group (n) is presented for each of the 5 groups. 
 
 ```{r calculate sample size homoscedasticity, echo=TRUE, include=TRUE}
-if (is_not_cran) {
 res1 <- sample_size_poly(
   n_groups = 5,
   poly_degree = 3,
   n0 = 400
 )
-} else {
-res <- readRDS(system.file("extdata", "sample_size_res.rds", package = "normref"))
-res1 <- res$res1
-}
 res1
 ```
 
 Here, we illustrate how to estimate the sample sizes based on sample data, assuming a polynomial degree of 2, for a reference sample size per group under traditional norming of 300. 
 
 ```{r calculate sample size heteroscedasticity, echo=TRUE, include=TRUE}
-if (is_not_cran) {
 ids_data$age_group <- cut(ids_data$age, breaks = seq(6, 18, by = 1))
 v <- tapply(ids_data$y7, ids_data$age_group, var, na.rm = TRUE)
 
@@ -437,10 +425,6 @@ res2 <- sample_size_poly(
  n0 = 300,
  variances = v
  )
-} else {
-res <- readRDS(system.file("extdata", "sample_size_res.rds", package = "normref"))
-res2 <- res$res2
-}
 res2
 ```
 

@@ -1,3 +1,62 @@
+#' Fit a GAMLSS model using substituted objects
+#'
+#' @description
+#' Constructs and evaluates a GAMLSS model call. By using substitute, we pass the 
+#' actual family object and data name directly into the expression, which is 
+#' safer for parallel processing than string evaluation.
+#'
+#' @noRd
+fit_gamlss <- function(poly_deg,
+                       selcrit,
+                       family_obj,
+                       spline,
+                       data_name,
+                       age_name,
+                       score_name,
+                       method,
+                       env) {
+  # 1. Helper to create formula expressions
+  get_form_expr <- function(deg, is_mu = FALSE) {
+    if (is_mu && isTRUE(spline)) return(substitute(pb(A), list(A = as.name(age_name))))
+    if (deg == 0) return(1)
+    substitute(stats::poly(A, D), list(A = as.name(age_name), D = deg))
+  }
+  
+  # Construct the formulas as literal objects
+  mu_f    <- stats::as.formula(substitute(S ~ FORM, list(S = as.name(score_name), FORM = get_form_expr(poly_deg[1], TRUE))))
+  sig_f   <- if(length(poly_deg) >= 2) stats::as.formula(substitute(~ FORM, list(FORM = get_form_expr(poly_deg[2])))) else NULL
+  nu_f    <- if(length(poly_deg) >= 3) stats::as.formula(substitute(~ FORM, list(FORM = get_form_expr(poly_deg[3])))) else NULL
+  tau_f   <- if(length(poly_deg) >= 4) stats::as.formula(substitute(~ FORM, list(FORM = get_form_expr(poly_deg[4])))) else NULL
+  
+  # 2. Build the call by injecting the FORMULA OBJECTS directly
+  if (identical(selcrit, "CV")) {
+    call_expr <- substitute(
+      gamlss::gamlssCV(MU, sigma.formula = SIG, nu.formula = NU, tau.formula = TAU,
+                       family = FAM, data = DAT, method = MET, rand = folds, trace = FALSE),
+      list(MU = mu_f, SIG = sig_f, NU = nu_f, TAU = tau_f,
+           FAM = family_obj, DAT = as.name(data_name), MET = parse(text = method)[[1]])
+    )
+  } else {
+    call_expr <- substitute(
+      gamlss::gamlss(MU, sigma.formula = SIG, nu.formula = NU, tau.formula = TAU,
+                     family = FAM, data = DAT, method = MET, trace = FALSE),
+      list(MU = mu_f, SIG = sig_f, NU = nu_f, TAU = tau_f,
+           FAM = family_obj, DAT = as.name(data_name), MET = parse(text = method)[[1]])
+    )
+  }
+  
+  # 3. Remove the NULL arguments (for families with < 4 parameters)
+  call_list <- as.list(call_expr)
+  call_list <- call_list[!vapply(call_list, is.null, logical(1))]
+  call_expr <- as.call(call_list)
+  
+  # 4. Evaluate
+  # Now it works because 'MU', 'SIG', etc. are replaced by the actual formula objects
+  eval(call_expr, envir = env)
+}
+
+
+
 #' Obtain candidate models (vectors of polynomial degrees) 
 #' for forward–backward selection
 #'
@@ -48,7 +107,7 @@ get_fb_degs <- function(poly_deg,
 #' @noRd
 get_selcrit <- function(poly_deg,
                         selcrit,
-                        family,
+                        family_obj,
                         spline,
                         method,
                         data_name,
@@ -59,21 +118,19 @@ get_selcrit <- function(poly_deg,
     withCallingHandlers({
       # Silence gamlss console output
       utils::capture.output({
-        mod <- str_eval(
-          x = str_create(
-            poly_deg   = poly_deg,
-            selcrit    = selcrit,
-            family     = family,
-            spline     = spline,
-            method     = method,
-            data_name  = data_name,
-            age_name   = age_name,
-            score_name = score_name
-          ),
-          env = env
+        mod <- fit_gamlss(
+          poly_deg   = poly_deg,
+          selcrit    = selcrit,
+          family_obj = family_obj,
+          spline     = spline,
+          method     = method,
+          data_name  = data_name,
+          age_name   = age_name,
+          score_name = score_name,
+          env        = env
         )
       })
-      
+
       # Compute selection criterion
       switch(selcrit,
              "AIC"     = stats::AIC(mod),
@@ -84,7 +141,7 @@ get_selcrit <- function(poly_deg,
       )
     },
     warning = function(w) {
-      if (grepl("discrepancy", conditionMessage(w), fixed = TRUE)) {
+      if (grepl("discrepancy", conditionMessage(w), fixed = TRUE) | grepl("dBB", conditionMessage(w), fixed = TRUE)) {
         invokeRestart("muffleWarning") # ignore harmless warnings
       } else {
         message(
@@ -103,78 +160,10 @@ get_selcrit <- function(poly_deg,
     )
     return(Inf)
   })
-  
+
   # Ensure numeric return
   if (!is.numeric(res)) res <- Inf
   return(res)
-}
-
-
-#' Create a string with GAMLSS model specifications
-#'
-#' @description
-#' constructs a character string containing the full model call for a GAMLSS
-#' model, based on the chosen family, polynomial degrees, spline setting,
-#' and model selection criterion. this string can later be evaluated using
-#' \code{str_eval()}.
-#'
-#' @inheritParams fb_select
-#' @param poly_deg vector. polynomial degrees for all parameters.
-#'
-#' @return a character string containing the model specification.
-#'
-#' @noRd
-
-str_create <- function(poly_deg,
-                       selcrit,
-                       family,
-                       spline,
-                       data_name,
-                       age_name,
-                       score_name,
-                       method) {
-  # Construct polynomial/spline terms
-  polys <- vapply(seq_along(poly_deg), function(i) {
-    if (poly_deg[i] == 0) {
-      "1"
-    } else {
-      paste0("stats::poly(", age_name, ", ", poly_deg[i], ")")
-    }
-  }, character(1))
-  
-  if (isTRUE(spline)) {
-    polys[1] <- paste0("gamlss::pb(", age_name, ")")
-  }
-  
-  # Build model formula depending on number of family parameters
-  lpar <- as.character(length(poly_deg))
-  
-  mod_1 <- switch(as.character(lpar),
-                  "1" = paste(score_name, "~", polys[1]),
-                  "2" = paste(score_name, "~", polys[1],
-                              ", sigma.formula = ~", polys[2]),
-                  "3" = paste(score_name, "~", polys[1],
-                              ", sigma.formula = ~", polys[2],
-                              ", nu.formula = ~", polys[3]),
-                  "4" = paste(score_name, "~", polys[1],
-                              ", sigma.formula = ~", polys[2],
-                              ", nu.formula = ~", polys[3],
-                              ", tau.formula = ~", polys[4]),
-                  stop("Unsupported number of parameters in family: ", lpar)
-  )
-  
-  # Wrap into gamlss or gamlssCV call
-  if (identical(selcrit, "CV")) {
-    sprintf(
-      'gamlss::gamlssCV(%s, family = %s, rand = folds, data = %s, method = %s, trace = FALSE)',
-      mod_1, family, data_name, method
-    )
-  } else {
-    sprintf(
-      'gamlss::gamlss(%s, family = %s, data = %s, method = %s, trace = FALSE)',
-      mod_1, family, data_name, method
-    )
-  }
 }
 
 #' Estimate CDF and associated Z-scores
@@ -205,8 +194,7 @@ estimateCDF <- function(object,
                         ages,
                         scores,
                         score_max,
-                        lower.tail = TRUE,
-                        cont_cor = FALSE) {
+                        lower.tail = TRUE) {
   fname <- object$family[1]
   pfun  <- paste0("p", fname)
   lpar  <- length(object$parameters)
@@ -225,9 +213,9 @@ estimateCDF <- function(object,
   # Predict distributional parameters
   pred_distr <- suppressWarnings({
     if (fname %in% gamlss::.gamlss.bi.list) {
-      gamlss::predictAll(object, newdata = ages, type = "response", bd = score_max)
+      gamlss::predictAll(object, data = object$data, newdata = ages, type = "response", bd = score_max)
     } else {
-      gamlss::predictAll(object, newdata = ages, type = "response")
+      gamlss::predictAll(object, data = object$data, newdata = ages, type = "response")
     }
   })
   
@@ -241,7 +229,9 @@ estimateCDF <- function(object,
     if (lpar >= 3) args$nu    <- pred_distr$nu[i]
     if (lpar == 4) args$tau   <- pred_distr$tau[i]
     if (fname %in% gamlss::.gamlss.bi.list) args$bd <- score_max
-    do.call(find_fun(pfun), args)
+    
+    pfun_fun <- find_fun(pfun)
+    do.call(pfun_fun, args)
   }
   
   # Compute CDF values
@@ -328,9 +318,9 @@ estimate_musigma <- function(object,
   # Predict distribution parameters
   pred <- suppressWarnings({
     if (fname %in% gamlss::.gamlss.bi.list) {
-      gamlss::predictAll(object, newdata = normingdata, type = "response", bd = score_max)
+      gamlss::predictAll(object, data = object$data, newdata = normingdata, type = "response", bd = score_max)
     } else {
-      gamlss::predictAll(object, newdata = normingdata, type = "response")
+      gamlss::predictAll(object,data = object$data, newdata = normingdata, type = "response")
     }
   })
   
@@ -467,24 +457,6 @@ intervals <- function(object,
   return(out)
 }
 
-#' Evaluate a string expression
-#'
-#' @description
-#' `str_eval()` parses and evaluates a character string as R code 
-#' within a specified environment.
-#'
-#' @param x `character(1)`  
-#'   string containing valid R code.
-#' @param env `environment`  
-#'   environment in which to evaluate the expression.
-#'
-#' @return the evaluated result of the parsed expression.
-#'
-#' @noRd
-str_eval <- function(x, env) {
-  eval(parse(text = x), envir = env)
-}
-
 #' Print fb_select iteration
 #'
 #' @inheritParams fb_select
@@ -520,28 +492,34 @@ str_eval <- function(x, env) {
 }
 
 
-#' Find a function by name in global environment or gamlss.dist
+#' Find a function by name in a user environment or gamlss.dist
 #'
 #' This helper searches for a function (typically a distribution function
-#' such as `q*`, `d*`, `p*`, or `r*`) in multiple places:
+#' such as `q*`, `d*`, `p*`, or `r*`) in two places:
 #'
-#' 1. The global environment (to allow for user-defined/custom functions).
+#' 1. A user-supplied environment (default: the global environment).
 #' 2. The \pkg{gamlss.dist} namespace (for built-in GAMLSS distributions).
 #'
 #' If the function is not found in either place, an error is raised.
 #'
 #' @param fname A character string giving the name of the function
-#'   (e.g., `"qLOGNO"`, `"dGA"`, `"pPO"`, or a custom `"qMyDist"` defined by the user).
+#'   (e.g., `"qLOGNO"`, `"dGA"`, `"pPO"`, or a custom `"qMyDist"`).
+#' @param envir Environment in which to first search for user-defined
+#'   distribution functions. Defaults to `.GlobalEnv`.
 #'
 #' @return A function object corresponding to `fname`.
 #'
 #' @noRd
-find_fun <- function(fname) {
-  stopifnot(is.character(fname), length(fname) == 1)
+find_fun <- function(fname, envir = .GlobalEnv) {
+  stopifnot(
+    is.character(fname),
+    length(fname) == 1,
+    is.environment(envir)
+  )
   
-  # 1. Check global environment (user-defined functions)
-  if (exists(fname, envir = .GlobalEnv, mode = "function", inherits = FALSE)) {
-    return(get(fname, envir = .GlobalEnv, mode = "function"))
+  # 1. Check user environment (custom functions)
+  if (exists(fname, envir = envir, mode = "function", inherits = FALSE)) {
+    return(get(fname, envir = envir, mode = "function"))
   }
   
   # 2. Check gamlss.dist exported functions
@@ -550,6 +528,87 @@ find_fun <- function(fname) {
   }
   
   # 3. Nothing found
-  stop(sprintf("Function '%s' not found in global environment or gamlss.dist.", fname),
-       call. = FALSE)
+  stop(
+    sprintf(
+      "Function '%s' not found in the supplied environment or gamlss.dist.",
+      fname
+    ),
+    call. = FALSE
+  )
+}
+
+.pad_to_length <- function(x, len, fill = 0) {
+  length(x) <- len
+  x[is.na(x)] <- fill
+  x
+}
+
+#' Capture a family of distribution functions and their closures
+#'
+#' Captures a user-defined family of distribution functions, such as those
+#' defined in \pkg{gamlss.tr}, and stores their full function closures in a
+#' new environment. The captured functions can subsequently be exported to
+#' parallel workers, where their enclosing environments may otherwise not be
+#' available.
+#'
+#' For a distribution named `fname`, the function looks for the corresponding
+#' density, distribution, quantile, and random-generation functions
+#' (`d*`, `p*`, `q*`, and `r*`). Functions are first searched for in
+#' `lookup_envir`; if not found there, exported functions from
+#' \pkg{gamlss.dist} are used.
+#'
+#' @param fname Character string giving the name of the distribution family.
+#' @param lookup_envir Environment in which to look for user-defined
+#'   distribution functions. Defaults to `.GlobalEnv`.
+#'
+#' @return An environment containing the available distribution functions as
+#'   complete function closures. The environment has `emptyenv()` as its
+#'   parent.
+#'
+#' @examples
+#' \dontrun{
+#' family_env <- capture_family_env("BCCG")
+#' }
+#'
+#' @seealso [gamlss.dist::gamlss.dist]
+capture_family_env <- function(fname, lookup_envir = .GlobalEnv) {
+  
+  out <- new.env(parent = emptyenv())
+  
+  objs <- c(
+    fname,
+    paste0(c("d", "p", "q", "r"), fname)
+  )
+  
+  for (nm in objs) {
+    if (exists(nm, envir = lookup_envir, mode = "function", inherits = FALSE)) {
+      
+      assign(
+        nm,
+        get(nm, envir = lookup_envir, mode = "function"),
+        envir = out
+      )
+      
+    } else if (nm %in% getNamespaceExports("gamlss.dist")) {
+      
+      assign(
+        nm,
+        getExportedValue("gamlss.dist", nm),
+        envir = out
+      )
+      
+    }
+  }
+  
+  if (!exists(fname, envir = out, mode = "function", inherits = FALSE)) {
+    stop(
+      "Distribution '", fname, "' could not be found. ",
+      "You seem to have used a user-specified distribution ",
+      "(e.g., a truncated distribution). ",
+      "Make sure that the distribution is loaded in your global environment.",
+      call. = FALSE
+    )
+  }
+  
+  out
 }

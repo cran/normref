@@ -17,7 +17,7 @@ normtable_create(
   max_score = NULL,
   step_size_score = 1,
   step_size_age = NULL,
-  cont_cor = FALSE,
+  cont_cor = TRUE,
   ci_level = 0.95,
   trim = 3,
   excel = FALSE,
@@ -59,8 +59,8 @@ observed score.}
 \item{step_size_age}{numeric. Increment of the ages in the norm table; defaults to
 approximately 100 ages in total.}
 
-\item{cont_cor}{logical. If \code{TRUE}, apply continuity correction for discrete test scores.
-Default is \code{FALSE}.}
+\item{cont_cor}{Logical. If \code{TRUE}, apply a continuity correction for discrete families.
+Default is \code{TRUE}.}
 
 \item{ci_level}{numeric. Confidence interval level (if \code{datarel} is provided).
 Default is 0.95.}
@@ -73,8 +73,7 @@ Default is 3.}
 \item{excel_name}{character. Path to the Excel file. Defaults to a temporary file.
 Ignored if \code{excel = FALSE}.}
 
-\item{new_data}{logical. If \code{FALSE} (default), create a full norm table and norm scores.
-If \code{TRUE}, only return norm scores for the given data.}
+\item{new_data}{data.frame. A data frame containing new values for the explanatory variables used in the model. Default is \code{NULL}.}
 }
 \value{
 A list of class \code{NormTable} containing:

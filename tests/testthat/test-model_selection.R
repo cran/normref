@@ -266,7 +266,7 @@ test_that("fb_select completes within reasonable time", {
 })
 
 # Test for data integrity
-test_that("fb_select preserves original data in model call", {
+test_that("fb_select preserves original data in model$data", {
   #skip_on_cran()
   
   sim_data <- create_test_data("NO", n = 50)
@@ -276,7 +276,7 @@ test_that("fb_select preserves original data in model call", {
   
   # Check that original data is preserved in call
   expect_true("data" %in% names(model$call))
-  expect_equal(nrow(model$call$data), nrow(shaped_data))
+  expect_equal(nrow(model$data), nrow(shaped_data))
 })
 
 
@@ -305,54 +305,148 @@ test_that("get_selcrit returns Inf on convergence warnings (not discrepancy)", {
   expect_equal(res, Inf)
 })
 
-test_that("fb_select runs faster with parallel (NO family)", {
+
+test_that("fb_select returns a spline when spline = TRUE", {
   skip_on_cran()
   skip_if_not_installed("gamlss")
-  skip_if_not_installed("gamlss.dist")
   
-  # Skip if only 1 core is available
-  ncores <- parallel::detectCores(logical = FALSE)
-  skip_if(ncores < 2, "Parallel test skipped: only 1 core available")
+  sim_data <- create_test_data("NO", n = 100)
+  shaped_data <- shape_data(
+    sim_data, "age", "score", "NO", verbose = FALSE
+  )
   
-  invisible(data("ids_kn_data", package = "normref"))
-  mydata <- shape_data(ids_kn_data,
-                       age_name   = "age_years",
-                       score_name = "rawscore",
-                       family     = "BCPE")
+  model <- fb_select(
+    shaped_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    family = "NO",
+    spline = TRUE,
+    trace = FALSE,
+    method = "RS(50)"
+  )
   
-  # Sequential run with timing
-  t_seq <- system.time({
-    mod_seq <- fb_select(
-      data       = mydata,
-      age_name   = "age_years",
+  expect_s3_class(model, "gamlss")
+  expect_false(is.null(getSmo(model)))
+})
+
+test_that("fb_select supports CV with a truncated distribution", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss")
+  skip_if_not_installed("gamlss.tr")
+  
+  # Create a user-defined truncated NO distribution
+  gamlss.tr::gen.trun(
+    par = c(0),
+    family = "NO",
+    name = "tr",
+    type = "left",
+    envir = .GlobalEnv
+  )
+  
+  sim_data <- create_test_data("NOtr", n = 100)
+  shaped_data <- shape_data(
+    sim_data, "age", "score", "NOtr", verbose = FALSE
+  )
+  
+  model <- fb_select(
+    shaped_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    family = "NOtr",
+    selcrit = "CV",
+    start_poly = c(1, 0, 0, 0),
+    max_poly = c(2, 1, 0, 0),
+    trace = FALSE,
+    method = "RS(50)",
+    seed = 123
+  )
+  
+  expect_s3_class(model, "gamlss")
+  expect_true(is.numeric(model$selcrit))
+  expect_true(is.finite(model$selcrit))
+  expect_equal(model$call$selcrit, "CV")
+})
+
+test_that("fb_select errors for an unrecognized distribution", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss")
+  sim_data <- create_test_data("NO", n = 50)
+  shaped_data <- shape_data(
+    sim_data, "age", "score", "NO", verbose = FALSE
+  )
+  
+  expect_error(
+    fb_select(
+      shaped_data,
+      age_name = "age",
       score_name = "shaped_score",
-      family     = "BCPE",
-      selcrit    = "BIC",
-      parallel   = FALSE,
-      trace      = FALSE
-    )
-  })
+      family = "NOtr699",
+      trace = FALSE
+    ),
+    "Distribution 'NOtr699' could not be found"
+  )
+})
+
+test_that("fb_select returns a valid search history", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss")
+  sim_data <- create_test_data("NO", n = 50)
+  shaped_data <- shape_data(
+    sim_data, "age", "score", "NO", verbose = FALSE
+  )
   
-  # Parallel run with timing
-  t_par <- system.time({
-    mod_par <- fb_select(
-      data       = mydata,
-      age_name   = "age_years",
-      score_name = "shaped_score",
-      family     = "BCPE",
-      selcrit    = "BIC",
-      parallel   = TRUE,
-      trace      = FALSE
-    )
-  })
+  model <- fb_select(
+    shaped_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    family = "NO",
+    trace = FALSE,
+    method = "RS(50)"
+  )
   
-  # Valid model objects
-  expect_s3_class(mod_seq, "gamlss")
-  expect_s3_class(mod_par, "gamlss")
+  expect_true("search_history" %in% names(model))
+  expect_named(model$search_history, c("poly_deg", "selcrit"))
   
-  # Both have selection criterion
-  expect_equal(mod_seq$selcrit,mod_par$selcrit)
+  expect_true(nrow(model$search_history) >= 1)
+  expect_true(all(is.character(model$search_history$poly_deg)))
+  expect_true(is.numeric(model$search_history$selcrit))
+  expect_true(all(is.finite(model$search_history$selcrit)))
+})
+
+test_that("CV selection is reproducible with the same seed", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss")
+  sim_data <- create_test_data("NO", n = 75)
+  shaped_data <- shape_data(
+    sim_data, "age", "score", "NO", verbose = FALSE
+  )
   
-  # Parallel should not be much slower (allow small tolerance)
-  expect_lt(t_par["elapsed"], 1.2 * t_seq["elapsed"])
+  model1 <- fb_select(
+    shaped_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    family = "NO",
+    selcrit = "CV",
+    trace = FALSE,
+    method = "RS(50)",
+    seed = 123
+  )
+  
+  model2 <- fb_select(
+    shaped_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    family = "NO",
+    selcrit = "CV",
+    trace = FALSE,
+    method = "RS(50)",
+    seed = 123
+  )
+  
+  expect_equal(model1$selcrit, model2$selcrit, tolerance = 1e-8)
+  expect_equal(
+    model1$search_history,
+    model2$search_history,
+    tolerance = 1e-8
+  )
 })

@@ -158,7 +158,7 @@ test_that("normtable_create handles step size parameters", {
 test_that("normtable_create handles continuity correction", {
   #skip_on_cran()
   
-  test_setup <- create_test_model("NO", 50)
+  test_setup <- create_test_model("BB", 50)
   model <- test_setup$model
   data <- test_setup$data
   
@@ -302,7 +302,7 @@ test_that("normtable_create CDF values are reasonable", {
   
   # CDF values should be between 0 and 1
   expect_true(all(result$cdf_sample >= 0 & result$cdf_sample <= 1))
-  expect_true(all(result$cdf_matrix >= 0 & result$cdf_matrix <= 1))
+  expect_true(all(result$cdf_matrix[,-1] >= 0 & result$cdf_matrix[,-1] <= 1))
   
   # Check that CDF values make sense (roughly uniform distribution expected)
   cdf_quantiles <- quantile(result$cdf_sample, c(0.1, 0.5, 0.9))

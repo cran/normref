@@ -1,6 +1,6 @@
 Package: normref
 Title: Continuous Norming
-Version: 0.1.1
+Version: 0.1.2
 Authors@R: c(
 	person("Klazien", "de Vries", email = "klazien.de.vries@rug.nl", role = "aut", comment = c(ORCID = "0009-0007-9302-1562")),
  	person("Hannah", "Heister", email = "h.m.heister@rug.nl", role = "aut", comment = c(ORCID = "0009-0001-1512-5549")),	
@@ -21,7 +21,7 @@ Suggests: knitr, rmarkdown, testthat (>= 3.0.0), gamlss.tr, future,
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2026-04-10 13:02:13 UTC; P157735
+Packaged: 2026-08-26 17:25:04 UTC; jinpi
 Author: Klazien de Vries [aut] (ORCID: <https://orcid.org/0009-0007-9302-1562>),
   Hannah Heister [aut] (ORCID: <https://orcid.org/0009-0001-1512-5549>),
   Julian Urban [aut] (ORCID: <https://orcid.org/0000-0001-8886-4724>),
@@ -30,4 +30,4 @@ Author: Klazien de Vries [aut] (ORCID: <https://orcid.org/0009-0007-9302-1562>),
     <https://orcid.org/0000-0003-3480-5918>)
 Maintainer: Marieke Timmerman <m.e.timmerman@rug.nl>
 Repository: CRAN
-Date/Publication: 2026-04-10 13:30:03 UTC
+Date/Publication: 2026-08-27 08:10:02 UTC

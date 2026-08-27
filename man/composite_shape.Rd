@@ -4,22 +4,28 @@
 \alias{composite_shape}
 \title{Shape data for a composite scale based on normalized Z-scores}
 \usage{
-composite_shape(normtables)
+composite_shape(normtables, weights = NULL)
 }
 \arguments{
 \item{normtables}{list of NormTable objects created by \code{\link[=normtable_create]{normtable_create()}}.
 Each must contain \code{znorm_sample} and \code{norm_sample}.}
+
+\item{weights}{Optional numeric vector of weights for a weighted composite score.
+If \code{NULL} (default), the sum of subtest z-scores is used.}
 }
 \value{
 A data.frame with:
-\itemize{
-\item \code{age}: Age values from the first NormTable
-\item \code{z_sum}: Unweighted sum of normalized z-scores across all objects
-}
+\item{age}{Age values from the first NormTable}
+\item{z_sum}{Weighted sum of normalized z-scores across all objects}
 }
 \description{
-\code{composite_shape()} creates a data.frame with age values and the sum of normalized
+\code{composite_shape()} creates a data.frame with age values and a weighted sum of normalized
 z-scores from multiple NormTable objects, suitable for use as input to \code{\link[=fb_select]{fb_select()}}.
+}
+\details{
+The function combines normalized z-scores across multiple norm tables into a composite score.
+By default, scores are equally weighted. Optional weights allow differential contribution of
+subtests to the composite.
 }
 \examples{
 \donttest{

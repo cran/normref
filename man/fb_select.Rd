@@ -16,8 +16,7 @@ fb_select(
   min_poly = c(0, 0, 0, 0),
   start_poly = c(2, 1, 0, 0),
   trace = TRUE,
-  seed = 123,
-  parallel = FALSE
+  seed = 123
 )
 }
 \arguments{
@@ -28,10 +27,10 @@ fb_select(
 \item{score_name}{string. Name of the score variable.}
 
 \item{family}{string. For example, \code{"BB"}, \code{"BCPE"}, \code{"NO"}, etc.
-See \link[gamlss.dist:gamlss.family]{gamlss.dist::gamlss.family} for more information.}
+See \link[gamlss.dist:gamlss.family]{gamlss.dist::gamlss.family} for more information on available distributions. Also accepts user-defined distributions like truncated distributions, see \code{\link[gamlss.tr:gen.trun]{gamlss.tr::gen.trun()}}.}
 
 \item{selcrit}{string. Model selection criterion: \code{"AIC"}, \code{"BIC"} (default), \code{"GAIC(3)"}, or \code{"CV"}
-(cross-validation with 10 folds).}
+(cross-validated global deviance with 10 folds).}
 
 \item{spline}{logical. If \code{FALSE} (default), estimate polynomial(s) for \eqn{\mu};
 if \code{TRUE}, estimate a p-spline for \eqn{\mu}.}
@@ -48,18 +47,13 @@ with iteration count. Default is \code{"RS(10000)"}.}
 \item{trace}{logical. If \code{TRUE}, prints progress during selection.}
 
 \item{seed}{integer. Random seed for cross-validation folds.}
-
-\item{parallel}{logical. If \code{TRUE}, candidate models are evaluated in
-parallel using \pkg{future.apply}. This can reduce elapsed time
-for computationally heavy settings (e.g., large datasets, distributions
-with many parameters, or when using cross-validation as the selection
-criterion). For light models or small datasets, the overhead of
-parallelization may make it slower than sequential evaluation.
-Parallelization is not supported for user-defined distribution families;
-use built-in \pkg{gamlss.dist} families instead. Default is \code{FALSE}.}
 }
 \value{
-A selected GAMLSS model with the chosen polynomial degrees and the final criterion value.
+A selected GAMLSS model with the chosen polynomial degrees. This is a gamlss object with additional components
+\itemize{
+\item \code{selcrit}: the value of the selection criterion for the chosen model.
+\item \code{search_history}: search history, containing the polynomial degrees for examined models (\code{poly_deg}) and their selection criteria (\code{selcrit}).
+}
 }
 \description{
 \code{fb_select()} applies the free order model selection procedure, using forward–backward selection
@@ -68,11 +62,7 @@ For a given GAMLSS distribution and model selection criterion, it selects the op
 polynomial degrees for all distribution parameters.
 }
 \details{
-If \code{parallel = TRUE}, candidate models are evaluated in parallel using the
-\pkg{future} and \pkg{future.apply} packages. If these packages are not installed,
-a message is printed and the function continues with sequential evaluation.
-Parallelization can reduce elapsed time for large datasets, complex models and cross-validation,
-but may be slower than sequential evaluation for smaller problems.
+The search history of the free order model selection procedure can be accessed in \code{search_history}. This allows the user to investigate if exists a more parsimonious model with similar model fit to the selected model.
 }
 \examples{
 \donttest{
@@ -80,6 +70,7 @@ invisible(data("ids_data"))
 mydata <- shape_data(ids_data, age_name = "age", score_name = "y14", family = "BB")
 mod <- fb_select(mydata, age_name = "age", score_name = "shaped_score",
                  family = "BB", selcrit = "BIC")
+mod$search_history
 }
 
 }

@@ -3,7 +3,6 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
-is_not_cran <- identical(Sys.getenv("NOT_CRAN"), "true")
 
 ## ----loadlibrary, echo=TRUE, include=TRUE-------------------------------------
 library(normref)
@@ -80,7 +79,6 @@ plot_normtable(normtable = norm_mod_BCPE_y14)
 ## ----create_normtable_y14, echo=TRUE, results='hide'--------------------------
 get(data("ids_rel_data"))
 temp_file <- tempfile(fileext = ".xlsx")
-
 norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
                                       data = mydata_BCPE,
                                       age_name = "age",
@@ -91,7 +89,6 @@ norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
                                       excel = TRUE)
 
 ## ----modelnorms_y7, echo=TRUE, include=TRUE-----------------------------------
-if (is_not_cran) {
 mydata_BCPE_y7 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y7",
@@ -105,9 +102,6 @@ norm_mod_BCPE_y7 <- normtable_create(model = mod_BCPE_y7,
                                     data = mydata_BCPE_y7,
                                     age_name = "age",
                                     score_name = "shaped_score")
-} else {
-norm_mod_BCPE_y7 <- readRDS(system.file("extdata", "norm_mod_BCPE_y7.rds", package = "normref"))
-}
 
 ## ----modelnormcompositescore, echo=TRUE, include=TRUE-------------------------
 composite <- list(norm_mod_BCPE_y7,
@@ -185,20 +179,14 @@ norm_mod_BCPEtr34_KN  <- normtable_create(model = mod_NOtr34_KN,
                                      normtype = "IQ")
 
 ## ----calculate sample size homoscedasticity, echo=TRUE, include=TRUE----------
-if (is_not_cran) {
 res1 <- sample_size_poly(
   n_groups = 5,
   poly_degree = 3,
   n0 = 400
 )
-} else {
-res <- readRDS(system.file("extdata", "sample_size_res.rds", package = "normref"))
-res1 <- res$res1
-}
 res1
 
 ## ----calculate sample size heteroscedasticity, echo=TRUE, include=TRUE--------
-if (is_not_cran) {
 ids_data$age_group <- cut(ids_data$age, breaks = seq(6, 18, by = 1))
 v <- tapply(ids_data$y7, ids_data$age_group, var, na.rm = TRUE)
 
@@ -208,9 +196,5 @@ res2 <- sample_size_poly(
  n0 = 300,
  variances = v
  )
-} else {
-res <- readRDS(system.file("extdata", "sample_size_res.rds", package = "normref"))
-res2 <- res$res2
-}
 res2
 

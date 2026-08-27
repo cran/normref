@@ -4,6 +4,7 @@
 # Runs once before the test suite.
 # -------------------------------------------------------------------------
 library(gamlss.dist)
+library(gamlss)
 
 # Ensure required truncated family is available
 if (requireNamespace("gamlss.tr", quietly = TRUE)) {

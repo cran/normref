@@ -31,8 +31,8 @@
 #' @param step_size_score numeric. Increment of the scores in the norm table; default is 1.
 #' @param step_size_age numeric. Increment of the ages in the norm table; defaults to 
 #'   approximately 100 ages in total.
-#' @param cont_cor logical. If `TRUE`, apply continuity correction for discrete test scores. 
-#'   Default is `FALSE`.
+#' @param cont_cor Logical. If \code{TRUE}, apply a continuity correction for discrete families.
+#'   Default is \code{TRUE}.
 #' @param ci_level numeric. Confidence interval level (if \code{datarel} is provided). 
 #'   Default is 0.95.
 #' @param trim numeric. Trim norm scores at ± \code{trim} standard deviations. 
@@ -40,8 +40,7 @@
 #' @param excel logical. If `TRUE`, attempt to write results to an Excel file. Default is `FALSE`.
 #' @param excel_name character. Path to the Excel file. Defaults to a temporary file.
 #'   Ignored if `excel = FALSE`.
-#' @param new_data logical. If `FALSE` (default), create a full norm table and norm scores. 
-#'   If `TRUE`, only return norm scores for the given data.
+#' @param new_data data.frame. A data frame containing new values for the explanatory variables used in the model. Default is \code{NULL}.
 #'
 #' @return A list of class \code{NormTable} containing:
 #' * \code{norm_sample}: Estimated norm scores (\code{normtype}) in the sample, trimmed at \code{trim}.
@@ -118,21 +117,38 @@ normtable_create <- function(model,
                              max_score = NULL,
                              step_size_score = 1,
                              step_size_age = NULL,
-                             cont_cor = FALSE,
+                             cont_cor = TRUE,
                              ci_level = 0.95,
                              trim = 3,
                              excel = FALSE,
                              excel_name = tempfile("norms", fileext = ".xlsx"),
                              new_data = FALSE) {
+  # Original fitting data
+  if (is.null(model$data)) {
+    stop(
+      "The data frame used in the original fit should be sotred in in model$data to create a norm table.\n",
+      "Please fit the GAMLSS model with `data = ...` so that the original ",
+      "fitting data are stored in the model object."
+    )
+  }
+  
+  fitdata <- model$data
   mydata <- data
+  
+  fname <- model$family[1]
+  lpar <- length(model$parameters)
+  # --- 2. Handle Family Object ---
+  family_obj <- find_fun(fname)()
+
   
   # Ensure score is a vector (not matrix)
   if (!is.null(dim(mydata[[score_name]]))) {
     mydata[[score_name]] <- mydata[[score_name]][, 1]
   }
   
-  nperson <- nrow(mydata)
-  score_max <- floor(max(mydata[[score_name]]))
+  cont_cor <- if (cont_cor == TRUE & family_obj$type == "Discrete") TRUE else FALSE
+  
+  score_max <- floor(max(fitdata[[score_name]]))
   sample_q <- data.frame(score = mydata[[score_name]])
   sample_age <- data.frame(age = mydata[[age_name]])
   colnames(sample_q) <- score_name
@@ -239,8 +255,8 @@ normtable_create <- function(model,
     cdf_sample_upper <- estimateCDF(model, sample_age, upper_sample, score_max)
     
     if (cont_cor) {
-      lower_floor <- data.frame(pmax(min(lower_sample), lower_sample - 1))
-      upper_floor <- data.frame(pmax(min(upper_sample), upper_sample - 1))
+      lower_floor <- data.frame(pmax(min(fitdata[[score_name]]), lower_sample - 1))
+      upper_floor <- data.frame(pmax(min(fitdata[[score_name]]), upper_sample - 1))
       cdf_sample_lower <- 0.5 * cdf_sample_lower +
         0.5 * estimateCDF(model, sample_age, lower_floor, score_max)
       cdf_sample_upper <- 0.5 * cdf_sample_upper +
@@ -254,7 +270,7 @@ normtable_create <- function(model,
   # Sample estimates
   cdf_sample <- estimateCDF(model, sample_age, sample_q, score_max)
   if (cont_cor) {
-    floor_scores <- data.frame(pmax(min(mydata[[score_name]]), mydata[[score_name]] - 1))
+    floor_scores <- data.frame(pmax(min(min(fitdata[[score_name]])), mydata[[score_name]] - 1))
     cdf_sample <- 0.5 * cdf_sample +
       0.5 * estimateCDF(model, sample_age, floor_scores, score_max)
   }
