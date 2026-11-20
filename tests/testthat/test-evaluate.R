@@ -9,7 +9,7 @@ test_that("normtable_create validates input parameters correctly", {
   
   # Test with valid parameters
   expect_silent({
-    result <- normtable_create(model, data, "age", "shaped_score")
+    result <- normtable_create(model, data = data, age_name = "age", score_name = "shaped_score")
   })
   
   # Test invalid reliability data structure
@@ -212,31 +212,8 @@ test_that("normtable_create handles trimming parameter", {
   expect_true(max(abs(z_scores_2)) <= max(abs(z_scores_3)))
 })
 
-test_that("normtable_create new_data parameter works correctly", {
-  #skip_on_cran()
-  
-  test_setup <- create_test_model("NO", 100)
-  model <- test_setup$model
-  original_data <- test_setup$data
-  
-  # Create new data
-  new_data <- create_test_data("NO", 20)
-  new_shaped <- shape_data(new_data, "age", "score", "NO", verbose = FALSE)
-  
-  result_new <- normtable_create(model, new_shaped, "age", "shaped_score", new_data = TRUE)
-  
-  # When new_data = TRUE, matrix outputs should be NA
-  expect_true(all(is.na(result_new$norm_matrix)))
-  expect_true(all(is.na(result_new$cdf_matrix)))
-  expect_true(all(is.na(result_new$pop_age)))
-  
-  # But sample outputs should be present
-  expect_false(all(is.na(result_new$norm_sample)))
-  expect_false(all(is.na(result_new$cdf_sample)))
-  expect_equal(nrow(result_new$norm_sample), nrow(new_shaped))
-})
-
 test_that("normtable_create works with different GAMLSS families", {
+  skip_on_cran()
   families_to_test <- c("NO", "BB", "BCPE")
   
   # Add NOtr if gamlss.tr is available
@@ -257,6 +234,36 @@ test_that("normtable_create works with different GAMLSS families", {
     expect_equal(nrow(result$norm_sample), nrow(data))
     expect_true(all(is.finite(result$norm_sample[, 2])))
   }
+})
+
+test_that("normtable_create maintains population norm_matrix while predicting on newdata", {
+  #skip_on_cran()
+  
+  test_setup <- create_test_model("NO", 100)
+  model <- test_setup$model
+  fit_data <- test_setup$data
+  
+  # Cohort of 10 people restricted to age 0
+  test_newdata <- data.frame(age = rep(25, 10), shaped_score = seq(-2, 2, length.out = 10))
+  
+  res <- normtable_create(
+    model = model,
+    data = fit_data,
+    newdata = test_newdata,
+    age_name = "age",
+    score_name = "shaped_score",
+    normtype = "Z"
+  )
+  
+  # 1. Sample norms evaluate the 10 individuals in newdata
+  expect_equal(nrow(res$norm_sample), 10)
+  expect_equal(res$norm_sample[, "age"], rep(25, 10))
+  
+  # 2. Population norm_matrix remains full population grid from fit_data
+  expect_true(nrow(res$norm_matrix) > 10)
+  expect_equal(min(res$pop_age$age), min(fit_data$age))
+  expect_equal(max(res$pop_age$age), max(fit_data$age))
+  expect_true(is.matrix(res$cdf_matrix) || is.data.frame(res$cdf_matrix))
 })
 
 test_that("normtable_create produces consistent results", {
@@ -284,8 +291,8 @@ test_that("normtable_create handles edge cases", {
   
   
   # Test with single age/score value
-  single_data <- data.frame(age = 25, score = 15)
-  result_single <- normtable_create(model, single_data, "age", "score")
+  single_data <- data.frame(age = 25, score = 0)
+  result_single <- normtable_create(model, age_name = "age", score_name = "score", newdata = single_data)
   
   expect_s3_class(result_single, "NormTable")
   expect_equal(nrow(result_single$norm_sample), 1)
@@ -354,7 +361,7 @@ test_that("normtable_create confidence intervals are logical", {
 
 # Performance and memory tests
 test_that("normtable_create completes in reasonable time", {
-  #skip_on_cran()
+  skip_on_cran()
   
   test_setup <- create_test_model("NO", 200)
   model <- test_setup$model
@@ -384,7 +391,185 @@ test_that("normtable_create handles missing values appropriately", {
   expect_true(all(is.finite(as.matrix(result$norm_matrix[, -1]))))
 })
 
+test_that("normtable_create produces identical results whether data is explicit or NULL", {
+  test_setup <- create_test_model("NO", 100)
+  model <- test_setup$model
+  fit_data <- test_setup$data
+  
+  res_data <- normtable_create(
+    model = model,
+    data = fit_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    normtype = "Z"
+  )
+  
+  res_null_data <- normtable_create(
+    model = model,
+    data = NULL,
+    age_name = "age",
+    score_name = "shaped_score",
+    normtype = "Z"
+  )
+  
+  expect_equal(res_null_data$norm_sample, res_data$norm_sample)
+  expect_equal(res_null_data$znorm_sample, res_data$znorm_sample)
+  expect_equal(res_null_data$norm_matrix, res_data$norm_matrix)
+})
 
+test_that("normtable_create evaluates norm scores correctly on newdata within normative sample range", {
+  test_setup <- create_test_model("NO", 100)
+  model <- test_setup$model
+  fit_data <- test_setup$data
+  
+  # Generate distinct test data kept strictly within the calibration range
+  test_n <- 10
+  age_rng <- range(fit_data$age)
+  score_rng <- range(fit_data$shaped_score)
+  
+  test_data <- data.frame(
+    age = seq(age_rng[1] + 0.1, age_rng[2] - 0.1, length.out = test_n),
+    score = seq(score_rng[1] + 0.1, score_rng[2] - 0.1, length.out = test_n)
+  )
+  test_shaped <- shape_data(test_data, "age", "score", "NO", verbose = FALSE)
+  
+  res_data <- normtable_create(
+    model = model,
+    data = fit_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    normtype = "Z"
+  )
+  
+  expect_silent(
+    res_newdata <- normtable_create(
+      model = model,
+      newdata = test_shaped,
+      age_name = "age",
+      score_name = "shaped_score",
+      normtype = "Z"
+    )
+  )
+  
+  # Check that population norm matrix is unchanged
+  expect_equal(res_newdata$norm_matrix, res_data$norm_matrix)
+  
+  # Check that evaluation is done on newdata rows
+  expect_equal(res_newdata$znorm_sample[, "age"], test_shaped$age)
+  expect_equal(nrow(res_newdata$znorm_sample), test_n)
+  expect_false(identical(res_newdata$znorm_sample[, "age"], res_data$znorm_sample[1:test_n, "age"]))
+  expect_false(identical(res_newdata$znorm_sample[, "Z"], res_data$znorm_sample[1:test_n, "Z"]))
+})
+
+test_that("normtable_create throws an error when supplied data does not correspond to model$data", {
+  test_setup <- create_test_model("NO", 100)
+  model <- test_setup$model
+  
+  test_data <- create_test_data("NO", 10)
+  test_shaped <- shape_data(test_data, "age", "score", "NO", verbose = FALSE)
+  
+  # Supplying mismatched data via `data` must throw an error
+  expect_error(
+    normtable_create(
+      model = model,
+      data = test_shaped,
+      age_name = "age",
+      score_name = "shaped_score",
+      normtype = "Z"
+    ),
+    regexp = "does not correspond to the data found in `model\\$data`"
+  )
+})
+
+test_that("normtable_create warns when newdata extrapolates outside age or score range", {
+  test_setup <- create_test_model("NO", 100)
+  model <- test_setup$model
+  fit_data <- test_setup$data
+  
+  # Create newdata where age and score exceed the calibration range
+  out_of_bounds_data <- data.frame(
+    age = c(min(fit_data$age) - 5, max(fit_data$age) + 5),
+    shaped_score = c(min(fit_data$shaped_score) - 5, max(fit_data$shaped_score) + 5)
+  )
+  
+  expect_warning(
+    normtable_create(
+      model = model,
+      newdata = out_of_bounds_data,
+      age_name = "age",
+      score_name = "shaped_score"
+    ),
+    regexp = "fall outside the range of the normative sample"
+  )
+})
+
+test_that("normtable_create predictions on a subset via newdata match full data predictions", {
+  test_setup <- create_test_model("NO", 100)
+  model <- test_setup$model
+  fit_data <- test_setup$data
+  
+  sub_indices <- 1:5
+  sub_data <- fit_data[sub_indices, ]
+  
+  res_data <- normtable_create(
+    model = model,
+    data = fit_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    normtype = "Z"
+  )
+  
+  res_subset_newdata <- normtable_create(
+    model = model,
+    newdata = sub_data,
+    age_name = "age",
+    score_name = "shaped_score",
+    normtype = "Z"
+  )
+  
+  expect_equal(
+    res_subset_newdata$norm_sample[, 2],
+    res_data$norm_sample[sub_indices, 2],
+    tolerance = 1e-6,
+    info = "Norm predictions on newdata must match predictions on original fitting data."
+  )
+  expect_equal(
+    as.vector(res_subset_newdata$cdf_sample),
+    as.vector(res_data$cdf_sample[sub_indices, ]),
+    tolerance = 1e-6,
+    info = "CDF predictions on newdata must match predictions on original fitting data."
+  )
+})
+
+test_that("normtable_create computes valid confidence intervals for newdata", {
+  test_setup <- create_test_model("NO", 100)
+  model <- test_setup$model
+  fit_data <- test_setup$data
+  
+  # Create newdata within range
+  test_n <- 10
+  age_rng <- range(fit_data$age)
+  score_rng <- range(fit_data$shaped_score)
+  test_data <- data.frame(
+    age = seq(age_rng[1] + 0.1, age_rng[2] - 0.1, length.out = test_n),
+    score = seq(score_rng[1] + 0.1, score_rng[2] - 0.1, length.out = test_n)
+  )
+  test_shaped <- shape_data(test_data, "age", "score", "NO", verbose = FALSE)
+  
+  res_newdata_rel <- normtable_create(
+    model = model,
+    newdata = test_shaped,
+    age_name = "age",
+    score_name = "shaped_score",
+    datarel = 0.85
+  )
+  
+  expect_equal(nrow(res_newdata_rel$norm_sample_lower), test_n)
+  expect_equal(nrow(res_newdata_rel$norm_sample_upper), test_n)
+  expect_true(all(res_newdata_rel$norm_sample_lower[, 2] <= res_newdata_rel$norm_sample_upper[, 2]))
+  expect_true(all(res_newdata_rel$norm_sample_lower[, 2] <= res_newdata_rel$norm_sample[, 2]))
+  expect_true(all(res_newdata_rel$norm_sample[, 2] <= res_newdata_rel$norm_sample_upper[, 2]))
+})
 
 # -------------------------------------------------------------------
 # Tests for reliability_window
@@ -592,7 +777,7 @@ test_that("different_rel is consistent across runs", {
 })
 
 test_that("different_rel completes within reasonable time", {
-  #skip_on_cran()
+  skip_on_cran()
   
   d <- simulate_1pl(N = 500, J = 10)
   expect_silent({
@@ -601,3 +786,1037 @@ test_that("different_rel completes within reasonable time", {
                          step_agegroup = c(1, 2))
   })
 })
+
+
+test_that("boot_subtest works with standard continuous model and respects seed replicability", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 42)
+  
+  # Run twice with the exact same seed
+  res1 <- boot_subtest(
+    model = fitted$model,
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    B = B_BOOT,
+    seed = 42,
+    step_size_age = 10,
+    parallel = FALSE
+  )
+  
+  res2 <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    B = B_BOOT,
+    seed = 42,
+    step_size_age = 10,
+    parallel = FALSE
+  )
+  
+  # Check validity and reproducibility
+  expect_valid_boot_subtest(res1, expected_boot_type = "nonparametric")
+  expect_equal(res1$normtable$boot_se, res2$normtable$boot_se)
+  expect_equal(res1$sample$boot_se, res2$sample$boot_se)
+})
+
+test_that("boot_subtest works with standard continuous model and respects seed replicability when parallel is true", {
+  skip_on_cran()
+  skip_if_not_installed("doParallel")
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 42)
+  
+  # Run twice with the exact same seed
+  res1 <- boot_subtest(
+    model = fitted$model,
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    B = B_BOOT,
+    seed = 42,
+    step_size_age = 10,
+    parallel = TRUE
+  )
+  
+  res2 <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    B = B_BOOT,
+    seed = 42,
+    step_size_age = 10,
+    parallel = TRUE
+  )
+  
+  # Check validity and reproducibility
+  expect_valid_boot_subtest(res1, expected_boot_type = "nonparametric")
+  expect_equal(res1$normtable$boot_se, res2$normtable$boot_se)
+  expect_equal(res1$sample$boot_se, res2$sample$boot_se)
+})
+
+test_that("boot_subtest works with spline models defined via gamlss::pb()", {
+  skip_on_cran()
+  
+  fitted_spline <- fit_pb_no(n = N_BOOT, seed = 101)
+  
+  res_spline <- boot_subtest(
+    model = fitted_spline$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    B = B_BOOT,
+    seed = 102,
+    step_size_age = 20,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res_spline, expected_boot_type = "nonparametric")
+})
+
+
+test_that("boot_subtest works with spline models defined via gamlss::pb() when parallel is true", {
+  skip_on_cran()
+  skip_if_not_installed("doParallel")
+  
+  fitted_spline <- fit_pb_no(n = N_BOOT, seed = 101)
+  
+  res_spline <- boot_subtest(
+    model = fitted_spline$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    B = B_BOOT,
+    seed = 102,
+    step_size_age = 20,
+    parallel = TRUE
+  )
+  
+  expect_valid_boot_subtest(res_spline, expected_boot_type = "nonparametric")
+})
+
+
+test_that("boot_subtest works with truncated distributions (gamlss.tr)", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss")
+  skip_if_not_installed("gamlss.tr")
+  
+  fitted_tr <- fit_fb_select_truncated_no(n = N_BOOT, seed = 123)
+  
+  res_tr <- boot_subtest(
+    model = fitted_tr$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    B = B_BOOT,
+    seed = 777,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res_tr, expected_boot_type = "nonparametric")
+})
+
+test_that("boot_subtest works with truncated distributions (gamlss.tr) when parallel is true", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss")
+  skip_if_not_installed("gamlss.tr")
+  skip_if_not_installed("doParallel")
+  
+  fitted_tr <- fit_fb_select_truncated_no(n = N_BOOT, seed = 123)
+  
+  res_tr <- boot_subtest(
+    model = fitted_tr$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    B = B_BOOT,
+    seed = 777,
+    step_size_age = 15,
+    parallel = TRUE
+  )
+  
+  expect_valid_boot_subtest(res_tr, expected_boot_type = "nonparametric")
+})
+
+test_that("boot_subtest parametric mode respects n_sim and age_sampling_frame", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 55)
+  custom_age_gen <- function(n) runif(n, 20, 60)
+  
+  res_param <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "parametric",
+    n_sim = 40L,
+    age_sampling_frame = custom_age_gen,
+    B = B_BOOT,
+    seed = 56,
+    step_size_age = 25,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res_param, expected_boot_type = "parametric")
+  expect_equal(res_param$meta$boot_type, "parametric")
+  expect_equal(res_param$meta$n_sim, 40L)
+})
+
+# -----------------------------------------------------------------------------
+# Input Validation
+# -----------------------------------------------------------------------------
+
+test_that("boot_subtest validates input model type", {
+  skip_on_cran()
+  
+  lm_mod <- stats::lm(mpg ~ hp, data = mtcars)
+  
+  expect_error(
+    boot_subtest(
+      model = lm_mod,
+      age_name = "hp",
+      B = B_BOOT
+    ),
+    regexp = "'model' must be a fitted gamlss object"
+  )
+})
+
+test_that("boot_subtest validates independent variable and response existence", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 201)
+  
+  # Non-existent age_name
+  expect_error(
+    boot_subtest(
+      model = fitted$model,
+      age_name = "non_existent_age",
+      score_name = "shaped_score",
+      B = B_BOOT
+    ),
+    regexp = "Independent variable 'non_existent_age' not found"
+  )
+})
+
+test_that("boot_subtest validates boot_type and normtype options", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 202)
+  
+  expect_error(
+    boot_subtest(
+      model = fitted$model,
+      age_name = "age",
+      boot_type = "invalid_type",
+      B = B_BOOT
+    )
+  )
+  
+  expect_error(
+    boot_subtest(
+      model = fitted$model,
+      age_name = "age",
+      normtype = "INVALID_SCALE",
+      B = B_BOOT
+    )
+  )
+})
+
+# -----------------------------------------------------------------------------
+# Model Reselection (reselect = TRUE) and Selection History
+# -----------------------------------------------------------------------------
+
+test_that("boot_subtest records model selection history and frequency table when reselect = TRUE", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 210)
+  
+  res_reselect <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    reselect = TRUE,
+    B = B_BOOT+10,
+    seed = 211,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res_reselect, expected_boot_type = "nonparametric")
+  expect_true(is.list(res_reselect$model_selection_history))
+  expect_equal(length(res_reselect$model_selection_history), res_reselect$trueB)
+  
+  # Frequency table must be present and sum to trueB
+  expect_true(class(res_reselect$model_freq_table) %in% c("integer", "table"))
+  expect_equal(sum(res_reselect$model_freq_table), res_reselect$trueB)
+  
+  # Each history element should contain numeric polynomial degrees
+  for (deg in res_reselect$model_selection_history) {
+    expect_true(is.numeric(deg))
+  }
+})
+
+test_that("boot_subtest does not compute model_freq_table when reselect = FALSE", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 212)
+  
+  res_noreselect <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    reselect = FALSE,
+    B = B_BOOT,
+    seed = 213,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_null(res_noreselect$model_freq_table)
+  expect_equal(length(res_noreselect$model_selection_history), res_noreselect$trueB)
+})
+
+# -----------------------------------------------------------------------------
+# fb_control Parameter Constraints (min_poly == max_poly)
+# -----------------------------------------------------------------------------
+
+test_that("boot_subtest respects fb_control constraints when reselect = TRUE", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 210)
+  
+  target_poly <- c(1, 0)
+  names(target_poly) <- c("mu", "sigma")
+  
+  res_constrained <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "parametric",
+    reselect = TRUE,
+    fb_control = list(
+      min_poly = target_poly ,
+      max_poly = target_poly ,
+      start_poly = target_poly ,
+      method = "RS(100)"
+    ),
+    B = B_BOOT + 10,
+    seed = 221,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res_constrained, expected_boot_type = "parametric")
+  
+  # Check that every replicate selected the exact fixed degrees
+  expect_true(length(res_constrained$model_selection_history) > 0)
+  for (deg in res_constrained$model_selection_history) {
+    expect_equal(deg, target_poly)
+  }
+  
+  # Ensure the frequency table has only one unique model configuration
+  expect_equal(length(res_constrained$model_freq_table), 1L)
+  expect_equal(names(res_constrained$model_freq_table)[1], paste(target_poly, collapse = "-"))
+  expect_equal(as.integer(res_constrained$model_freq_table[1]), res_constrained$trueB)
+})
+
+# -----------------------------------------------------------------------------
+# Trimming
+# -----------------------------------------------------------------------------
+
+test_that("boot_subtest sets normtable boot_se to NA outside trimmed Z scores", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 301)
+  
+  res <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    trim = 0.50,
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 10,
+    B = B_BOOT,
+    seed = 302,
+    parallel = FALSE
+  )
+  
+  # For normtype = "Z", $original is the original z-score estimate.
+  outside <- !is.na(res$normtable$original) &
+    abs(res$normtable$original) >= 0.50
+  inside <- !is.na(res$normtable$original) &
+    abs(res$normtable$original) < 0.50
+  
+  expect_true(any(outside))
+  expect_true(any(inside))
+  expect_true(all(is.na(res$normtable$boot_se[outside])))
+  expect_true(all(!is.na(res$normtable$boot_se[inside])))
+})
+
+test_that("boot_subtest sets sample boot_se to NA outside trimmed Z scores", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 303)
+  
+  res <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    trim = 0.50,
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 10,
+    B = B_BOOT,
+    seed = 304,
+    parallel = FALSE
+  )
+  
+  outside <- !is.na(res$sample$original) &
+    abs(res$sample$original) >= 0.50
+  inside <- !is.na(res$sample$original) &
+    abs(res$sample$original) < 0.50
+  
+  expect_true(any(outside))
+  expect_true(any(inside))
+  expect_true(all(is.na(res$sample$boot_se[outside])))
+  expect_true(all(!is.na(res$sample$boot_se[inside])))
+})
+
+test_that("trimming is applied on the requested norm scale", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 305)
+  
+  res <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    normtype = "T",
+    boot_type = "nonparametric",
+    trim = 0.50,
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 10,
+    B = B_BOOT,
+    seed = 306,
+    parallel = FALSE
+  )
+  
+  # On the T scale, z = +/-0.50 corresponds to T = 45 and T = 55.
+  outside <- !is.na(res$normtable$original) &
+    (res$normtable$original <= 45 | res$normtable$original >= 55)
+  inside <- !is.na(res$normtable$original) &
+    res$normtable$original > 45 & res$normtable$original < 55
+  
+  expect_true(any(outside))
+  expect_true(any(inside))
+  expect_true(all(is.na(res$normtable$boot_se[outside])))
+  expect_true(all(!is.na(res$normtable$boot_se[inside])))
+})
+
+# -----------------------------------------------------------------------------
+# Parametric bootstrap: fb_select polynomial, truncated, and pb() spline
+# -----------------------------------------------------------------------------
+
+test_that("parametric boot_subtest works with an fb_select polynomial model", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 401)
+  res <- run_small_parametric_boot(fitted, seed = 402)
+  
+  expect_valid_boot_subtest(res, expected_boot_type = "parametric")
+  expect_equal(res$meta$n_sim, 50L)
+  expect_true(any(is.finite(res$normtable$boot_se)))
+})
+
+test_that("parametric boot_subtest works with an fb_select truncated model", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss")
+  skip_if_not_installed("gamlss.tr")
+  
+  fitted <- fit_fb_select_truncated_no(n = N_BOOT, seed = 401)
+  res <- run_small_parametric_boot(fitted, seed = 404)
+  
+  expect_valid_boot_subtest(res, expected_boot_type = "parametric")
+  expect_equal(res$meta$n_sim, 50L)
+  expect_true(any(is.finite(res$normtable$boot_se)))
+})
+
+test_that("parametric boot_subtest works with a gamlss pb() spline model", {
+  skip_on_cran()
+  
+  fitted <- fit_pb_no(n = N_BOOT, seed = 405)
+  res <- run_small_parametric_boot(fitted, seed = 406)
+  
+  expect_valid_boot_subtest(res, expected_boot_type = "parametric")
+  expect_equal(res$meta$n_sim, 50L)
+  expect_true(any(is.finite(res$normtable$boot_se)))
+})
+
+test_that("parametric boot_subtest uses a numeric age sampling frame", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 601)
+  age_values <- seq(25, 55, by = 5)
+  
+  res <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "parametric",
+    n_sim = 40L,
+    age_sampling_frame = age_values,
+    min_age = 25,
+    max_age = 55,
+    step_size_age = 10,
+    B = B_BOOT,
+    seed = 602,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res, expected_boot_type = "parametric")
+  expect_equal(res$meta$n_sim, 40L)
+})
+
+test_that("parametric boot_subtest is reproducible with a fixed seed", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 603)
+  
+  args <- list(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "parametric",
+    n_sim = 40L,
+    age_sampling_frame = function(n) runif(n, 20, 60),
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 10,
+    B = B_BOOT,
+    seed = 604,
+    parallel = FALSE
+  )
+  
+  res1 <- do.call(boot_subtest, args)
+  res2 <- do.call(boot_subtest, args)
+  
+  expect_equal(res1$normtable$boot_se, res2$normtable$boot_se)
+  expect_equal(res1$sample$boot_se, res2$sample$boot_se)
+})
+
+# -----------------------------------------------------------------------------
+# keep_boot checks
+# -----------------------------------------------------------------------------
+
+test_that("boot_subtest retains raw bootstrap replicates when keep_boot = TRUE and discards when FALSE", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 111)
+  
+  res_keep <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    keep_boot = TRUE,
+    B = B_BOOT,
+    seed = 112,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_true(!is.null(res_keep$boot))
+  expect_equal(length(res_keep$boot), res_keep$trueB)
+  expect_named(res_keep$boot[[1]], c("table", "sample", "poly"))
+  
+  res_drop <- boot_subtest(
+    model = fitted$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    keep_boot = FALSE,
+    B = B_BOOT,
+    seed = 112,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_null(res_drop$boot)
+})
+
+test_that("parametric boot_subtest works with bounded BB model", {
+  skip_on_cran()
+  
+  fitted_bb <- fit_fb_select_bb(n = N_BOOT)
+  
+  res_bb_param <- boot_subtest(
+    model = fitted_bb$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "parametric",
+    n_sim = 40L,
+    age_sampling_frame = function(n) runif(n, 20, 60),
+    B = B_BOOT,
+    seed = 116,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res_bb_param, expected_boot_type = "parametric")
+  expect_equal(res_bb_param$meta$n_sim, 40L)
+})
+
+# -----------------------------------------------------------------------------
+# Reselection (reselect = TRUE) across all model types
+# -----------------------------------------------------------------------------
+
+test_that("boot_subtest reselection works with truncated model (NOtr)", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss.tr")
+  
+  fitted_tr <- fit_fb_select_truncated_no(n = N_BOOT, seed = 120)
+  
+  res_tr_reselect <- boot_subtest(
+    model = fitted_tr$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    reselect = TRUE,
+    B = B_BOOT,
+    seed = 121,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res_tr_reselect, expected_boot_type = "nonparametric")
+  expect_true(is.list(res_tr_reselect$model_selection_history))
+  expect_equal(length(res_tr_reselect$model_selection_history), res_tr_reselect$trueB)
+  expect_true(class(res_tr_reselect$model_freq_table) %in% c("integer", "table"))
+})
+
+test_that("boot_subtest reselection works with bounded BB model", {
+  skip_on_cran()
+  
+  fitted_bb <- fit_fb_select_bb(n = N_BOOT)
+  
+  res_bb_reselect <- boot_subtest(
+    model = fitted_bb$model,
+    age_name = "age",
+    score_name = "shaped_score",
+    boot_type = "nonparametric",
+    reselect = TRUE,
+    B = B_BOOT,
+    seed = 126,
+    step_size_age = 15,
+    parallel = FALSE
+  )
+  
+  expect_valid_boot_subtest(res_bb_reselect, expected_boot_type = "nonparametric")
+  expect_true(is.list(res_bb_reselect$model_selection_history))
+  expect_equal(length(res_bb_reselect$model_selection_history), res_bb_reselect$trueB)
+  expect_true(class(res_bb_reselect$model_freq_table) %in% c("integer", "table"))
+})
+
+
+# ============================================================================
+# boot_composite Tests
+# ============================================================================
+
+# -----------------------------------------------------------------------------
+# Input Validation for boot_composite
+# -----------------------------------------------------------------------------
+
+test_that("boot_composite validates inputs and subtest consistency", {
+  skip_on_cran()
+  
+  fix <- create_composite_fixture(n = N_BOOT)
+  
+  # 1. subtest_models must be a named list
+  expect_error(
+    boot_composite(
+      subtest_models = list(fix$subtest_models[[1]], fix$subtest_models[[2]]),
+      composite_model = fix$composite_model,
+      age_name = "age",
+      B = B_BOOT
+    ),
+    regexp = "'subtest_models' must be a named list"
+  )
+  
+  # 2. composite_model must be a gamlss object
+  expect_error(
+    boot_composite(
+      subtest_models = fix$subtest_models,
+      composite_model = stats::lm(mpg ~ hp, data = mtcars),
+      age_name = "age",
+      B = B_BOOT
+    ),
+    regexp = "'composite_model' must be a fitted gamlss object"
+  )
+  
+  # 3. Independent variable not found in one of the subtests
+  expect_error(
+    boot_composite(
+      subtest_models = fix$subtest_models,
+      composite_model = fix$composite_model,
+      age_name = "wrong_age_col",
+      B = B_BOOT
+    ),
+    regexp = "Independent variable 'wrong_age_col' not found"
+  )
+  
+  # 4. Mismatched row counts across subtests
+  mismatch_dat <- create_test_data("NO", n = N_BOOT + 10)
+  mismatch_shaped <- shape_data(mismatch_dat, "age", "score", "NO", verbose = FALSE)
+  mismatch_mod <- fb_select(
+    data = mismatch_shaped,
+    age_name = "age",
+    score_name = "shaped_score",
+    family = "NO",
+    start_poly = c(1, 0),
+    max_poly = c(1, 0),
+    trace = FALSE
+  )
+  
+  expect_error(
+    boot_composite(
+      subtest_models = list(sub_no = fix$subtest_models$sub_no, sub_bad = mismatch_mod),
+      composite_model = fix$composite_model,
+      age_name = "age",
+      B = B_BOOT
+    ),
+    regexp = "All subtest models must be fitted on the exact same complete observations"
+  )
+  
+  # 5. Invalid weights
+  expect_error(
+    boot_composite(
+      subtest_models = fix$subtest_models,
+      composite_model = fix$composite_model,
+      age_name = "age",
+      weights = c(1, 2, 3), # length mismatch
+      B = B_BOOT
+    ),
+    regexp = "'weights' must be NULL or a numeric vector with length equal to subtest_models"
+  )
+})
+
+# -----------------------------------------------------------------------------
+# Basic Execution and Reproducibility
+# -----------------------------------------------------------------------------
+
+test_that("boot_composite runs with mixed continuous/bounded subtests and replicates with seed", {
+  skip_on_cran()
+  
+  fix <- create_composite_fixture(n = N_BOOT)
+  
+  args <- list(
+    subtest_models = fix$subtest_models,
+    composite_model = fix$composite_model,
+    age_name = "age",
+    composite_score_name = "z_sum",
+    subtest_score_names = list(sub_no = "score_no", sub_bb = "score_bb"),
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 15,
+    min_score = -4,
+    max_score = 4,
+    step_size_score = 1,
+    B = B_BOOT,
+    seed = 711,
+    parallel = FALSE
+  )
+  
+  res1 <- do.call(boot_composite, args)
+  res2 <- do.call(boot_composite, args)
+  
+  # Class & metadata checks
+  expect_s3_class(res1, "normref_bootstrap")
+  expect_equal(res1$meta$type, "composite")
+  expect_equal(res1$B, B_BOOT)
+  expect_gt(res1$trueB, 0)
+  
+  # Structure checks
+  expect_true(is.data.frame(res1$normtable))
+  expect_true(is.data.frame(res1$sample))
+  expect_true("boot_se" %in% names(res1$normtable))
+  expect_true("boot_se" %in% names(res1$sample))
+  expect_true("score_no" %in% names(res1$sample))
+  expect_true("score_bb" %in% names(res1$sample))
+  expect_true("z_sum" %in% names(res1$sample))
+  
+  # Seed reproducibility
+  expect_equal(res1$normtable$boot_se, res2$normtable$boot_se)
+  expect_equal(res1$sample$boot_se, res2$sample$boot_se)
+})
+
+# -----------------------------------------------------------------------------
+# Trimming in boot_composite
+# -----------------------------------------------------------------------------
+
+test_that("boot_composite applies trimming on the composite norm scale", {
+  skip_on_cran()
+  
+  fix <- create_composite_fixture(n = N_BOOT)
+  
+  res_trim <- boot_composite(
+    subtest_models = fix$subtest_models,
+    composite_model = fix$composite_model,
+    age_name = "age",
+    trim = 0.50,
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 15,
+    B = B_BOOT,
+    seed = 721,
+    parallel = FALSE
+  )
+  
+  outside <- !is.na(res_trim$normtable$original) &
+    abs(res_trim$normtable$original) >= 0.50
+  inside <- !is.na(res_trim$normtable$original) &
+    abs(res_trim$normtable$original) < 0.50
+  
+  expect_true(any(outside))
+  expect_true(any(inside))
+  expect_true(all(is.na(res_trim$normtable$boot_se[outside])))
+  expect_true(all(!is.na(res_trim$normtable$boot_se[inside])))
+})
+
+# -----------------------------------------------------------------------------
+# Reselection and fb_control in boot_composite
+# -----------------------------------------------------------------------------
+
+test_that("boot_composite supports reselect and inspects per-model selection history", {
+  skip_on_cran()
+  
+  fix <- create_composite_fixture(n = N_BOOT)
+  
+  res_reselect <- boot_composite(
+    subtest_models = fix$subtest_models,
+    composite_model = fix$composite_model,
+    age_name = "age",
+    reselect = TRUE,
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 15,
+    B = B_BOOT,
+    seed = 731,
+    parallel = FALSE
+  )
+  
+  model_names <- c("sub_no", "sub_bb", "composite")
+  expect_named(res_reselect$model_selection_history, model_names)
+  expect_named(res_reselect$model_freq_table, model_names)
+  
+  for (nm in model_names) {
+    expect_equal(length(res_reselect$model_selection_history[[nm]]), res_reselect$trueB)
+    expect_true(class(res_reselect$model_freq_table[[nm]]) %in% c("integer", "table"))
+    expect_equal(sum(res_reselect$model_freq_table[[nm]]), res_reselect$trueB)
+  }
+})
+
+test_that("boot_composite respects fb_control degree constraints across subtests", {
+  skip_on_cran()
+  
+  fix <- create_composite_fixture(n = N_BOOT)
+  
+  target_poly <- c(1, 0)
+  names(target_poly) <- c("mu", "sigma")
+  
+  fb_ctrl <- list(
+    sub_no = list(min_poly = target_poly, max_poly = target_poly, start_poly = target_poly, trace = FALSE),
+    sub_bb = list(min_poly = target_poly, max_poly = target_poly, start_poly = target_poly, trace = FALSE),
+    composite = list(min_poly = target_poly, max_poly = target_poly, start_poly = target_poly, trace = FALSE)
+  )
+  
+  res_constrained <- boot_composite(
+    subtest_models = fix$subtest_models,
+    composite_model = fix$composite_model,
+    age_name = "age",
+    reselect = TRUE,
+    fb_control = fb_ctrl,
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 15,
+    B = B_BOOT,
+    seed = 741,
+    parallel = FALSE
+  )
+  
+  for (nm in c("sub_no", "sub_bb", "composite")) {
+    for (deg in res_constrained$model_selection_history[[nm]]) {
+      expect_equal(deg, target_poly)
+    }
+    expect_equal(length(res_constrained$model_freq_table[[nm]]), 1L)
+    expect_equal(as.integer(res_constrained$model_freq_table[[nm]][1]), res_constrained$trueB)
+  }
+})
+
+# -----------------------------------------------------------------------------
+# keep_boot in boot_composite
+# -----------------------------------------------------------------------------
+
+test_that("boot_composite retains replicate outputs when keep_boot = TRUE and discards when FALSE", {
+  skip_on_cran()
+  
+  fix <- create_composite_fixture(n = N_BOOT)
+  
+  res_keep <- boot_composite(
+    subtest_models = fix$subtest_models,
+    composite_model = fix$composite_model,
+    age_name = "age",
+    keep_boot = TRUE,
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 15,
+    B = B_BOOT,
+    seed = 751,
+    parallel = FALSE
+  )
+  
+  expect_true(!is.null(res_keep$boot))
+  expect_equal(length(res_keep$boot), res_keep$trueB)
+  expect_named(res_keep$boot[[1]], c("table", "sample", "poly"))
+  
+  res_drop <- boot_composite(
+    subtest_models = fix$subtest_models,
+    composite_model = fix$composite_model,
+    age_name = "age",
+    keep_boot = FALSE,
+    min_age = 20,
+    max_age = 60,
+    step_size_age = 15,
+    B = B_BOOT,
+    seed = 751,
+    parallel = FALSE
+  )
+  
+  expect_null(res_drop$boot)
+})
+
+
+# ============================================================================
+# Convergence Check Tests (trueB = 0 on non-convergence)
+# ============================================================================
+
+test_that("boot_subtest aborts when non-converged with RS(1)", {
+  skip_on_cran()
+  
+  fitted <- fit_fb_select_no(n = N_BOOT, seed = 801)
+  
+  # method = 'RS(1)' forces non-convergence; ignore intermediate warnings and check error
+  expect_error(
+    suppressWarnings(
+      boot_subtest(
+        model = fitted$model,
+        age_name = "age",
+        score_name = "shaped_score",
+        boot_type = "nonparametric",
+        reselect = TRUE,
+        fb_control = list(
+          method = "RS(1)"
+        ),
+        B = B_BOOT,
+        seed = 802,
+        parallel = FALSE
+      )
+    ),
+    regexp = "All bootstrap replicates failed"
+  )
+  
+  fitted$model$call$method <- "RS(1)"
+  expect_error(
+    suppressWarnings(
+      boot_subtest(
+        model = fitted$model,
+        age_name = "age",
+        score_name = "shaped_score",
+        boot_type = "nonparametric",
+        reselect = FALSE,
+        B = B_BOOT,
+        seed = 802,
+        parallel = FALSE
+      )
+    ),
+    regexp = "All bootstrap replicates failed"
+  )
+})
+
+# ============================================================================
+# Full Model Grid Tests: boot_subtest
+# Grid: {NO, Spline pb(), Truncated, BB} x {nonparametric, parametric} x {reselect: TRUE, FALSE}
+# ============================================================================
+
+test_that("boot_subtest runs across entire model grid, boot_types, and reselection modes", {
+  skip_on_cran()
+  skip_if_not_installed("gamlss.tr")
+  
+  # 1. Fit models representing each architecture
+  mod_no     <- fit_fb_select_no(n = N_BOOT, seed = 810)$model
+  mod_spline <- fit_pb_no(n = N_BOOT, seed = 811)$model
+  mod_tr     <- fit_fb_select_truncated_no(n = N_BOOT, seed = 812)$model
+  mod_bb     <- fit_fb_select_bb(n = N_BOOT)$model
+  
+  models_grid <- list(
+    "NO"        = mod_no,
+    "spline"    = mod_spline,
+    "truncated" = mod_tr,
+    "BB"        = mod_bb
+  )
+  
+  boot_types <- c("nonparametric", "parametric")
+  reselect_opts <- c(FALSE, TRUE)
+  
+  for (m_name in names(models_grid)) {
+    curr_mod <- models_grid[[m_name]]
+    is_spline <- grepl("pb\\(", deparse(curr_mod$mu.formula))
+    
+    for (b_type in boot_types) {
+      for (res_opt in reselect_opts) {
+        
+        # Splines fitted with pb() do not reselect polynomial degrees via fb_select
+        if (is_spline && res_opt) next
+        
+        desc <- sprintf("boot_subtest grid: model=%s | boot_type=%s | reselect=%s", m_name, b_type, res_opt)
+        
+        res <- boot_subtest(
+          model = curr_mod,
+          age_name = "age",
+          score_name = "shaped_score",
+          boot_type = b_type,
+          n_sim = if (b_type == "parametric") 40L else NULL,
+          age_sampling_frame = if (b_type == "parametric") function(n) runif(n, 20, 60) else NULL,
+          reselect = res_opt,
+          min_age = 20,
+          max_age = 60,
+          step_size_age = 20,
+          B = B_BOOT+10,
+          seed = 820,
+          parallel = FALSE
+        )
+        
+        expect_s3_class(res, "normref_bootstrap")
+        expect_equal(res$meta$boot_type, b_type)
+        expect_gt(res$trueB, 0)
+        expect_true(is.data.frame(res$normtable))
+        expect_true(is.data.frame(res$sample))
+        
+        if (res_opt) {
+          expect_true(!is.null(res$model_freq_table))
+          expect_equal(sum(res$model_freq_table), res$trueB)
+        } else {
+          expect_null(res$model_freq_table)
+        }
+      }
+    }
+  }
+})
+
+

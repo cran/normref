@@ -87,7 +87,7 @@ No return value, only graphical output.
 }
 \description{
 \code{centiles_bin()} plots centile curves and the sample data for
-binomial-type distributions (see \link[gamlss:binom]{gamlss::.gamlss.bi.list}) based on a
+binomial-type distributions (see \link[gamlss:.gamlss.bi.list]{gamlss::.gamlss.bi.list}) based on a
 fitted \code{GAMLSS} object.
 }
 \examples{

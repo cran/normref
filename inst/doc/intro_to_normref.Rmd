@@ -1,5 +1,5 @@
 ---
-title: "How to use normref"
+title: "Introduction to normref"
 author: "Marieke E. Timmerman, Klazien de Vries, and Hannah M. Heister"
 date: "`r Sys.Date()`"
 output:
@@ -7,7 +7,7 @@ output:
     self_contained: true
 bibliography: ../inst/REFERENCES.bib  
 vignette: >
-  %\VignetteIndexEntry{How to use normref}
+  %\VignetteIndexEntry{Introduction to normref}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -15,18 +15,28 @@ vignette: >
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 6,
+  out.width = "100%"
 )
 ```
 
-
+```{r load-precomputed, include=FALSE}
+pre <- readRDS(system.file("extdata", "precomputed", "intro_vignette.rds",
+                           package = "normref", mustWork = TRUE))
+list2env(pre, envir = knitr::knit_global())
+```
 
 # Introduction
 
 The `normref` package provides tools to calculate continuous norms for psychological test scores, where the norms depend on a single continuous variable, denoted as the norm predictor. Typically, the norm predictor is age. The package allows for a single norm predictor. Applying the norms results in standardized scores such as percentiles, T-scores, or IQ scores. Such standardized scores allow for norm-referenced interpretation, that is, comparing an individual’s performance to that of a relevant reference population.
 
 For example, an IQ score expresses an individual’s performance relative to the general population of the same age. To estimate such norms, `normref` requires raw scores from a representative normative sample.  
-This vignette illustrates how to derive norms from such a sample, following the approach described in a tutorial [@timmerman2021tutorial].
+This vignette illustrates how to derive norms from such a sample, following the approach described in a tutorial [@timmerman2021tutorial]. Some computations are time-consuming, so their results are precomputed and stored in the package.
 
 ---
   
@@ -77,9 +87,9 @@ The `shape_data` function verifies whether the response variable is properly for
 
 By default, `shape_data` uses the highest observed raw score in the data as the maximum. This can be overridden with the argument max_score. The function also removes any cases with missing values for the raw scores or age.
 
-Applying `shape_data` to our data produces a new dataframe, `mydata_BB`, which includes the additional column `"shaped_score"` containing the scores in the correct format for BB models:
-```{r shapedata, echo=TRUE, include=TRUE}
-mydata_BB <- shape_data(data = ids_data,
+Applying `shape_data` to our data produces a new dataframe, `mydata_BB_y14`, which includes the additional column `"shaped_score"` containing the scores in the correct format for BB models:
+```{r shapedata_BB_y14, echo=TRUE, include=TRUE}
+mydata_BB_y14 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y14",
                      family = "BB",
@@ -88,8 +98,8 @@ mydata_BB <- shape_data(data = ids_data,
 
 We can also apply shape data to obtain scores in the correct format for the BCPE model, which requires nonzero, positive scores.
 
-```{r selectmodel_BCPE_y14, echo=TRUE, include=TRUE}
-mydata_BCPE <- shape_data(data = ids_data,
+```{r shapedata_BCPE_y14, echo=TRUE, include=TRUE}
+mydata_BCPE_y14 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y14",
                      family = "BCPE")
@@ -103,7 +113,7 @@ To fit the candidate models, we use the model selection function `fb_select()`, 
 We first apply this procedure to the BB distribution. Note that we pass `"shaped_score"` as the `score_name`, because this column contains the reshaped response variable created by `shape_data()`.
 
 ```{r selectmodel_BB_y14, echo=TRUE, include=TRUE}
-mod_BB_y14 <- fb_select(data = mydata_BB,
+mod_BB_y14 <- fb_select(data = mydata_BB_y14,
                        age_name = "age",
                        score_name = "shaped_score",
                        family = "BB",
@@ -113,19 +123,21 @@ The free order model selection procedure selects a second degree polynomial of a
 
 As alternative models, we also fit the BCPE and NO models.
 
-```{r selectmodel_BCPENO_y14, echo=TRUE, include=TRUE}
-mod_BCPE_y14 <- fb_select(data = mydata_BCPE,
-                         age_name = "age",
-                         score_name = "shaped_score",
-                         family = "BCPE",
-                         selcrit = "BIC") 
-
+```{r selectmodel_NO_y14, echo=TRUE, include=TRUE}
 mod_NO_y14 <- fb_select(data = ids_data,
                       age_name = "age",
                       score_name = "y14",
                       family = "NO",
                       selcrit = "BIC")
 ``` 
+
+```{r selectmodel_BCPE_y14, echo=TRUE, include=TRUE, eval=FALSE}
+mod_BCPE_y14<- fb_select(data = mydata_BCPE_y14,
+                         age_name = "age",
+                         score_name = "shaped_score",
+                         family = "BCPE",
+                         selcrit = "BIC") 
+```
 
 ## Inspect model fit
 
@@ -198,18 +210,22 @@ In this vignette, we save results to a temporary Excel file (`tempfile()`) to co
 In real applications, users can specify a permanent path, e.g.  
 `excel_name = "norms_y14_1.xlsx"`.
 
-```{r, normtable_BCPE, echo=TRUE, include=TRUE}
+```{r create_normtable_BCPE_excel, echo=FALSE}
 temp_file <- tempfile(fileext = ".xlsx")
+```
+```{r create_normtable_BCPE_excel2, echo=FALSE, eval = FALSE}
 norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
-                                      data = mydata_BCPE,
+                                      data = mydata_BCPE_y14,
                                       age_name = "age",
                                       score_name = "shaped_score", 
                                       normtype = "IQ", 
                                       excel_name = temp_file,
                                       excel = TRUE)
+```
+```{r create_normtable_BCPE, echo=TRUE, include=TRUE}
 head(norm_mod_BCPE_y14[["norm_matrix"]][, c(1, 11)],
      n = 15)
-``` 
+```
 
 We can visualize the generated norm tables using the function `plot_normtable()`. This function plots the percentiles as a function of age for each raw score. Each line represents a specific raw score:
 
@@ -237,11 +253,11 @@ For distributions without a closed-form mean and standard deviation, such as the
 
 In the example below, we use the fictitious age-dependent reliabilities provided in `ids_rel_data`. Later, in the section *Estimating test reliability dependent on age*, we show how such reliabilities can be derived from individual item scores using a sliding window approach. Note that for Test 14, we cannot estimate these reliabilities from raw scores, as the individual items are not available.
 
-```{r create_normtable_y14, echo=TRUE, results='hide'}
+```{r create_normtable_y14, echo=FALSE,  eval = FALSE}
 get(data("ids_rel_data"))
 temp_file <- tempfile(fileext = ".xlsx")
 norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
-                                      data = mydata_BCPE,
+                                      data = mydata_BCPE_y14,
                                       age_name = "age",
                                       score_name = "shaped_score",
                                       datarel = ids_rel_data,
@@ -256,32 +272,49 @@ norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
 
 Composite scores are calculated by combining multiple subtest scores, typically as the sum of their standardized scores (z-scores). To illustrate this process, we first fit a BCPE model to Test 7. Based on the wormplot inspection (not shown), the model fits the data well. Note that fitting BCPE models can be computationally intensive.
 
-```{r modelnorms_y7, echo=TRUE, include=TRUE}
+```{r data_y7, echo=TRUE, include=TRUE}
 mydata_BCPE_y7 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y7",
                      family = "BCPE")
+``` 
+
+```{r model_y7, echo=TRUE, include=TRUE, eval = FALSE}
 mod_BCPE_y7 <- fb_select(data = mydata_BCPE_y7,
                         age_name = "age",
                         score_name = "shaped_score",
                         family = "BCPE",
                         selcrit = "BIC")
-norm_mod_BCPE_y7 <- normtable_create(model = mod_BCPE_y7,
+``` 
+
+```{r norms_y7, echo=TRUE, include=TRUE}
+norm_mod_BCPE_y7_untrimmed <- normtable_create(model = mod_BCPE_y7,
                                     data = mydata_BCPE_y7,
                                     age_name = "age",
-                                    score_name = "shaped_score")
+                                    score_name = "shaped_score",
+                                    trim = Inf)
 ``` 
+
 Next, we calculate composite scores based on the norm tables of Test 7 and Test 14. The workflow is as follows:
 
-1. Create a list of the relevant subtest norm tables.
+1. Create a list of the relevant subtest norm tables. 
 2. Use the function `composite_shape()` to compute the composite scores as the sum of z-scores across the tests.
 3. Fit a normal distribution to the composite scores, since sums of normally distributed variables are  normally distributed.
 4. Generate a norm table for the composite scores using `normtable_create()`.
 
+In step 1, we set `trim = Inf` in `normtable_create` for both subtests such that their normed scores are not rounded off (default is `trim = 3`) at this step yet. Rounding may result in deviations from normality in the composite score distribution, potentially resulting in a poorer model fit of the composite score model.
+
 
 ```{r modelnormcompositescore, echo=TRUE, include=TRUE}
-composite <- list(norm_mod_BCPE_y7,
-                  norm_mod_BCPE_y14)
+norm_mod_BCPE_y14_untrimmed <- normtable_create(model = mod_BCPE_y14,
+                                    data = mydata_BCPE_y14,
+                                    age_name = "age",
+                                    score_name = "shaped_score",
+                                    trim = Inf)
+
+
+composite <- list(norm_mod_BCPE_y7_untrimmed,
+                  norm_mod_BCPE_y14_untrimmed )
 
 composite_data <- composite_shape(normtables = composite)
 
@@ -306,14 +339,17 @@ It is possible to calculate normed scores directly for a new sample, using their
 
 In this example, we select the raw scores and ages of the first five individuals in our dataset. We then use the previously estimated model to obtain their normed scores and display the results.
 
-```{r newsamplenorm, echo=TRUE, include=TRUE}
+```{r newsample, echo=TRUE, include=TRUE}
 newdata <- ids_data[1:5,c("age","y14")]
+``` 
+```{r newsamplenormtable, echo=TRUE, include=TRUE, eval = FALSE}
 norm_mod_BCPE_newdata <- normtable_create(model = mod_BCPE_y14,
-                                         data = newdata,
+                                         newdata = newdata,
                                          age_name = "age",
-                                         score_name = "y14", 
-                                         new_data = TRUE,
+                                         score_name = "y14",
                                          datarel = ids_rel_data)
+``` 
+```{r newsamplenorm, echo=TRUE, include=TRUE}
 norm_mod_BCPE_newdata[["norm_sample"]]
 ``` 
 
@@ -383,7 +419,7 @@ rel_est <- reliability_window(data = ids_kn_data,
 
 When we estimate the normed scores using the truncated BCPE model, we can now construct reliability based CIs for the normed scores.
 
-```{r calculate confidence intervals, echo=TRUE, include=TRUE}
+```{r calculate confidence intervals, echo=TRUE, include=TRUE, eval = FALSE}
 norm_mod_BCPEtr34_KN  <- normtable_create(model = mod_NOtr34_KN,
                                      data = mydata_NOtr34,
                                      age_name = "age_years",
@@ -404,29 +440,37 @@ Multiple optimal solutions may exist. By default, a single solution is returned,
 
 Now, we estimate the sample sizes for 6 groups, assuming a polynomial degree of 3, for a reference sample size per group under traditional norming of 400. In the table, the sample size per group (n) is presented for each of the 5 groups. 
 
-```{r calculate sample size homoscedasticity, echo=TRUE, include=TRUE}
+```{r calculate sample size homoscedasticity, echo=TRUE, include=TRUE, eval = FALSE}
 res1 <- sample_size_poly(
   n_groups = 5,
   poly_degree = 3,
   n0 = 400
 )
+```
+```{r results sample size homoscedasticity, echo=TRUE, include=TRUE}
 res1
 ```
 
 Here, we illustrate how to estimate the sample sizes based on sample data, assuming a polynomial degree of 2, for a reference sample size per group under traditional norming of 300. 
 
-```{r calculate sample size heteroscedasticity, echo=TRUE, include=TRUE}
+```{r set up sample size heteroscedasticity, echo=TRUE, include=TRUE}
 ids_data$age_group <- cut(ids_data$age, breaks = seq(6, 18, by = 1))
 v <- tapply(ids_data$y7, ids_data$age_group, var, na.rm = TRUE)
-
+```
+```{r calculate sample size heteroscedasticity, echo=TRUE, include=TRUE, eval = FALSE}
 res2 <- sample_size_poly(
  n_groups = length(v),
  poly_degree = 2,
  n0 = 300,
  variances = v
  )
+```
+```{r results sample size heteroscedasticity, echo=TRUE, include=TRUE}
 res2
 ```
 
+## Funding
+
+Development of `normref` was supported by Dutch Research Council NWO, [grant 406.27.GO.022](https://doi.org/10.61686/YHUOB23106).
 
 # References

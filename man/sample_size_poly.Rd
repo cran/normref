@@ -96,21 +96,22 @@ sizes per group (\code{solution_type = "range"}).
 }
 \examples{
 # Example 1: Planning before data collection (homoscedastic)
-\dontrun{
+\donttest{
 res1 <- sample_size_poly(
   n_groups = 5,
   poly_degree = 2,
-  n0 = 400
+  n0 = 10 #400
 )
 
 # Example 2: Midway planning with variance estimates (heteroscedastic)
+invisible(data("ids_data"))
 ids_data$age_group <- cut(ids_data$age, breaks = seq(6, 18, by = 1))
 v <- tapply(ids_data$y7, ids_data$age_group, var, na.rm = TRUE)
 
 res2 <- sample_size_poly(
  n_groups = length(v),
  poly_degree = c(1,2,3),
- n0 = c(300,400),
+ n0 = c(10,20), #c(300,400),
  variances = v
  )
 }

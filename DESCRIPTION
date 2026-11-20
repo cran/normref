@@ -1,33 +1,36 @@
 Package: normref
 Title: Continuous Norming
-Version: 0.1.2
+Version: 1.0.0
 Authors@R: c(
 	person("Klazien", "de Vries", email = "klazien.de.vries@rug.nl", role = "aut", comment = c(ORCID = "0009-0007-9302-1562")),
  	person("Hannah", "Heister", email = "h.m.heister@rug.nl", role = "aut", comment = c(ORCID = "0009-0001-1512-5549")),	
  	person("Julian", "Urban", email = "Julian.Urban@gesis.org", role = "aut", comment = c(ORCID = "0000-0001-8886-4724")),
  	person("Lieke", "Voncken", email = "Lieke.Voncken@tilburguniversity.edu", role = "ctb", comment = c(ORCID = "0000-0002-6710-271X")),
- 	person("Marieke", "Timmerman", email = "m.e.timmerman@rug.nl", role = c("aut", "cre"), comment = c(ORCID = "0000-0003-3480-5918"))
+ 	person("Casper", "Albers", email = "c.j.albers@rug.nl", role = "ctb", comment = c(ORCID = "0000-0002-9213-6743")),
+ 	person("Marieke", "Timmerman", email = "m.e.timmerman@rug.nl", role = c("aut", "cre"), comment = c(ORCID = "0000-0003-3480-5918")),
+ 	person("Dutch Research Council, NWO", role = c("fnd"), comment = c(GrantID = "10.61686/YHUOB23106"))
 	)
-Description: A toolbox for continuous norming of psychological and educational tests, supporting regression-based norming where norms can vary as a continuous function of age or another norm predictor. Norms are estimated using Generalized Additive Models for Location, Scale, and Shape (GAMLSS), enabling flexible modelling of the full score distribution in a normative sample. The package supports applications in psychometrics and psychological testing, and includes functions for model selection, reliability estimation, norm calculation, including confidence intervals, and sample size planning. For more details, see Timmerman et al. (2021) <doi:10.1037/met0000348>.
+Description: A toolbox for continuous norming of psychological and educational tests, supporting regression-based norming where norms can vary as a continuous function of age or another norm predictor. Norms are estimated using Generalized Additive Models for Location, Scale, and Shape (GAMLSS), enabling flexible modelling of the full score distribution in a normative sample. The package supports applications in psychometrics and psychological testing, and includes functions for model selection, reliability estimation, and norm calculation, including confidence intervals, and normed score precision evaluation and visualization. For more details, see Timmerman et al. (2021) <doi:10.1037/met0000348>.
 License: GPL (>= 3)
 Encoding: UTF-8
-RoxygenNote: 7.3.3
 Depends: R (>= 3.5.0)
-Imports: gamlss, gamlss.dist, ggplot2, lpSolve, openxlsx2, rlang,
-        Rdpack, stats, utils, withr
+Imports: dplyr, foreach, gamlss, gamlss.dist, ggplot2, openxlsx2,
+        rlang, Rdpack, stats, utils, withr, scales, lpSolve, doParallel
 RdMacros: Rdpack
-Suggests: knitr, rmarkdown, testthat (>= 3.0.0), gamlss.tr, future,
-        future.apply
+Suggests: gamlss.tr, knitr, rmarkdown, testthat (>= 3.0.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
+Config/roxygen2/version: 8.1.1
 NeedsCompilation: no
-Packaged: 2026-08-26 17:25:04 UTC; jinpi
+Packaged: 2026-11-20 09:19:48 UTC; jinpi
 Author: Klazien de Vries [aut] (ORCID: <https://orcid.org/0009-0007-9302-1562>),
   Hannah Heister [aut] (ORCID: <https://orcid.org/0009-0001-1512-5549>),
   Julian Urban [aut] (ORCID: <https://orcid.org/0000-0001-8886-4724>),
   Lieke Voncken [ctb] (ORCID: <https://orcid.org/0000-0002-6710-271X>),
+  Casper Albers [ctb] (ORCID: <https://orcid.org/0000-0002-9213-6743>),
   Marieke Timmerman [aut, cre] (ORCID:
-    <https://orcid.org/0000-0003-3480-5918>)
+    <https://orcid.org/0000-0003-3480-5918>),
+  Dutch Research Council, NWO [fnd] (GrantID: 10.61686/YHUOB23106)
 Maintainer: Marieke Timmerman <m.e.timmerman@rug.nl>
 Repository: CRAN
-Date/Publication: 2026-08-27 08:10:02 UTC
+Date/Publication: 2026-11-20 14:30:29 UTC

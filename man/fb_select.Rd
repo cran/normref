@@ -15,6 +15,7 @@ fb_select(
   max_poly = c(5, 5, 2, 2),
   min_poly = c(0, 0, 0, 0),
   start_poly = c(2, 1, 0, 0),
+  start.from = NULL,
   trace = TRUE,
   seed = 123
 )
@@ -27,7 +28,7 @@ fb_select(
 \item{score_name}{string. Name of the score variable.}
 
 \item{family}{string. For example, \code{"BB"}, \code{"BCPE"}, \code{"NO"}, etc.
-See \link[gamlss.dist:gamlss.family]{gamlss.dist::gamlss.family} for more information on available distributions. Also accepts user-defined distributions like truncated distributions, see \code{\link[gamlss.tr:gen.trun]{gamlss.tr::gen.trun()}}.}
+See \link[gamlss.dist:gamlss.family]{gamlss.dist::gamlss.family} for more information on available distributions. Also accepts user-defined distributions like truncated distributions.}
 
 \item{selcrit}{string. Model selection criterion: \code{"AIC"}, \code{"BIC"} (default), \code{"GAIC(3)"}, or \code{"CV"}
 (cross-validated global deviance with 10 folds).}
@@ -43,6 +44,9 @@ with iteration count. Default is \code{"RS(10000)"}.}
 \item{min_poly}{vector. Minimum polynomial degrees for each parameter.}
 
 \item{start_poly}{vector. Starting polynomial degrees for each parameter.}
+
+\item{start.from}{gamlss object (optional). A pre-fitted GAMLSS model to serve as the
+initial warm start for fitting the starting model (\code{start_poly}) using the \code{start.from} argument in \code{\link[gamlss:gamlss]{gamlss::gamlss()}}. Only utilized when the distribution has 3 or more parameters. Default is \code{NULL}.}
 
 \item{trace}{logical. If \code{TRUE}, prints progress during selection.}
 
@@ -62,7 +66,7 @@ For a given GAMLSS distribution and model selection criterion, it selects the op
 polynomial degrees for all distribution parameters.
 }
 \details{
-The search history of the free order model selection procedure can be accessed in \code{search_history}. This allows the user to investigate if exists a more parsimonious model with similar model fit to the selected model.
+The search history of the free order model selection procedure can be accessed in \code{search_history}. This allows the user to investigate whether a more parsimonious model with similar model fit to the selected model exists.
 }
 \examples{
 \donttest{

@@ -3,7 +3,7 @@
 \docType{data}
 \name{ids_kn_data}
 \alias{ids_kn_data}
-\title{The ids_kn_data are simlulated data for demonstration purposes}
+\title{The ids_kn_data are simulated data for demonstration purposes}
 \format{
 A dataframe with 36 columns:
 \describe{

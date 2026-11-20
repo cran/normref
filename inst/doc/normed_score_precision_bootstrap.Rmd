@@ -1,0 +1,604 @@
+---
+title: "Visualizing Normed Score Precision with normref"
+author: "Klazien de Vries, Casper J. Albers, and Marieke E. Timmerman"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+bibliography: ../inst/REFERENCES.bib  
+vignette: >
+  %\VignetteIndexEntry{Visualizing Normed Score Precision with normref}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup1, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 6,
+  out.width = "100%"
+)
+```
+
+```{r setup2, echo = FALSE, include = TRUE}
+library(normref)
+library(gamlss)
+library(gamlss.tr)
+library(dplyr)
+```
+
+```{r load-precomputed, include=FALSE}
+pre <- readRDS(system.file("extdata", "precomputed", "bootstrap_vignette.rds",
+                           package = "normref", mustWork = TRUE))
+list2env(pre, envir = knitr::knit_global())
+```
+
+# Introduction
+
+The `normref` package provides tools for continuous norming of psychological test scores using GAMLSS models. In continuous norming, norms are estimated as smooth functions of a continuous norm predictor, typically age. This contrasts to classical norming, where norms are estimated separately within discrete age groups. Applying these norms results in standardized scores such as percentiles, $z$-scores, T-scores, or IQ scores, allowing an individual’s performance to be interpreted relative to the reference population of the same age.
+
+Because the norms are estimated from a finite normative sample, every resulting normed score has sampling uncertainty. This vignette describes bootstrap methods for studying that uncertainty at the subtest and composite levels with the `normref` package. The vignette demonstrates how to:
+
+- Estimate normed score precision for subtests and composite scores;
+- Inspect and interpret both normtable-level and sample-level precision results;
+- Visualize standard errors using precision heatmaps and centile curves;
+- Compare continuous norming precision with benchmarks from discrete norming;
+- Use the parametric bootstrap for simulation-based sample-size planning.
+
+The examples use subtest data from the Intelligence and Development Scales–2 (IDS-2), included in `normref`. Three cases are considered:
+
+
+1. Case 1: Precision of Subtest Norms
+2. Case 2: Precision of Composite Norms
+3. Case 3: Sample Size Planning for Subtests
+
+Bootstrap computations are time-consuming, so the results are precomputed and stored in the package.
+
+# Bootstrap implementation
+
+`normref` implements bootstrap procedures at two levels:
+
+- `boot_subtest()` estimates precision for a single subtest;
+- `boot_composite()` estimates end-to-end precision for a composite constructed from multiple subtests.
+
+Both functions return two complementary types of results:
+
+- **Normtable-level precision (`$normtable`)** evaluates a regular grid of ages and raw or composite scores. It describes the stability of values that would be printed in a norm table.
+- **Sample-level precision (`$sample`)** evaluates the observed individuals. It describes how much a person's final standardized score would change if a different normative reference sample were used.
+
+For subtests, normtable-level and sample-level results often have similar interpretations. For composites, they do not. Composite sample-level results propagate uncertainty from the subtest norms into each person's composite score. Composite normtable-level results condition on a fixed composite score; therefore, they do not represent the full uncertainty of an observed person's composite score. In this application, the composite `$normtable` result is best treated as a sanity check on the stability of the mapping of the model to the composite, not as the primary estimate of person-level diagnostic uncertainty. The composite `$sample` result is the more relevant quantity for the interpretation of the precision of an individual's score.
+
+## Nonparametric and parametric bootstrap
+
+For subtests, `boot_subtest()` supports two bootstrap types:
+
+- In the **nonparametric bootstrap**, participants are resampled with replacement, and the models are refitted on each bootstrap sample. This is appropriate for post-hoc precision analysis when normative data are available. It reflects sampling variability and can also reflect empirical features such as outliers, irregular distributions, and data-driven model selection;
+- In the **parametric bootstrap**, (new) raw scores are simulated from a (presupposed or fitted) GAMLSS model over a specified age-sampling frame. This is particularly useful for a priori sample-size planning and study design. It estimates precision under the assumed fitted model and therefore does not fully represent possible misspecification or unexpected features of future data.
+
+Use the nonparametric bootstrap for post-hoc precision analysis when norming data are available. Use the parametric bootstrap primarily for simulation-based planning.
+Cases 1 and 2 use the nonparametric bootstrap. Case 3 uses the parametric bootstrap.
+
+---
+
+# Case 1: Precision of subtest norms
+
+## Model fitting
+
+The following example uses the *Naming Categories* subtest (`y7`)  from the IDS-2 data (`ids_data`). The response is bounded between 0 and 34. The nonparametric bootstrap depends on the collected normative sample and the selected model. Therefore, we first perform model selection on the collected sample. For a more detailed explanation of model selection with `normref`, see the [`normref` package introduction vignette](https://CRAN.R-project.org/package=normref/vignettes/intro_to_normref.html). 
+
+We begin by inspecting the relationship between age and raw test scores.
+
+```{r inspect-data}
+# Load data
+data(ids_data)
+
+# Visualize scores
+plot(ids_data$age, ids_data$y7,
+     xlab = "Age",
+     ylab = "Raw test score",
+     pch = 15,
+     cex = 0.5,
+     col = gray(0.7))
+```
+
+The raw scores show a clear age-related trend, with both the location and spread of the scores changing across the age range. This motivates the use of flexible continuous norming models with GAMLSS.
+
+## Model fitting
+
+ Candidate distributional families can include the discrete betabinomial (`BB`) and continuous distributions, such as a truncated normal or truncated Box–Cox Cole Green (`BCCG`) distribution. The betabinomial distribution is directly suitable for discrete (bounded count) responses, but the `NO` and `BCCG` assume a continuous response. For relatively wide test score ranges, continuous distributions can provide a good approximation to the discrete test scores. To account for the test score bounds when using continuous distributions, we truncate those distributions at the observed minimum and maximum.
+
+```{r model-selection}
+# BB
+mydata.BB <- shape_data(
+  ids_data,
+  age_name = "age",
+  score_name = "y7",
+  family = "BB"
+)
+
+mod.BB <- fb_select(
+  data = mydata.BB,
+  age_name = "age",
+  score_name = "shaped_score",
+  family = "BB",
+  selcrit = "BIC"
+)
+
+# NOtr
+gamlss.tr::gen.trun(par = c(0,34), family = "NO", name = 'tr34', type = "both")
+
+mydata.NOtr34 <- shape_data(
+  ids_data,
+  age_name = "age",
+  score_name = "y7",
+  family = "NOtr34"
+)
+
+mod.NOtr34 <- fb_select(
+  data = mydata.NOtr34,
+  age_name = "age",
+  score_name = "shaped_score",
+  family = "NOtr34",
+  selcrit = "BIC"
+)
+
+# BCCGtr
+gamlss.tr::gen.trun(par = c(34), family = "BCCG", name = 'tr34', type = "right")
+
+mydata.BCCGtr34 <- shape_data(
+  ids_data,
+  age_name = "age",
+  score_name = "y7",
+  family = "BCCGtr34"
+)
+
+mod.BCCGtr34 <- fb_select(
+  data = mydata.BCCGtr34,
+  age_name = "age",
+  score_name = "shaped_score",
+  family = "BCCGtr34",
+  selcrit = "BIC"
+)
+
+# Compare model fit in terms of BIC
+BIC(mod.BB, mod.NOtr34, mod.BCCGtr34)%>%arrange(BIC)
+```
+
+In this example, we select the truncated BCCG model because it has the lowest BIC. The BIC is the recommended model selection criterion for continuous norming with GAMLSS in [@voncken2019model]. A low BIC indicates that a model has a good balance between model fit and complexity. However, it does not, by itself, establish that a model is adequate. Worm plots, centile curves, and residual diagnostics should also be inspected. In this example, these diagnostics (not) indicate that the truncated BCCG model has better model fit than the the NO of BB distributions. This is not surprising, because the truncated BCCG, unlike the NO and BB distributions, additionally allows test score skewness to vary with age. 
+
+After selecting the model, we construct a normtable on an age–score grid using `normtable_create()`.
+
+```{r create-normtable}
+normtable1 <- normtable_create(
+  mod.BCCGtr34,
+  mydata.BCCGtr34,
+  normtype = "IQ",
+  min_age = 5,
+  max_age = 20,
+  age_name = "age",
+  score_name = "shaped_score"
+)
+
+normmat <- normtable1$norm_matrix
+
+normmat %>%
+  filter(age == 10)
+```
+
+At age 10, a raw score of 21 corresponds to an IQ score of approximately 115. That value is estimated from a finite normative sample and therefore has sampling variability. We will use `boot_subtest()` to provide estimates of the precision around the estimated normed scores in the normtable.
+
+## Running `boot_subtest()`
+
+The function `boot_subtest()` estimates the precision of normed scores, given a certain selected GAMLSS distribution. In each bootstrap replicate, `boot_subtest()` refits the model on a bootstrap sample and reconstructs the norm table. The variation across replicates is used to estimate the standard error of the normed score estimates.
+
+The function `boot_subtest()` follows the same workflow and grid specifications as `normtable_create()`: `normtype` specifies the reporting scale (`"Z"`, `"T"`, or `"IQ"`). The age and score ranges and their grid spacing can be controlled with `min_age`, `max_age`, `min_score`, `max_score`, `step_size_age`, and `step_size_score`. Scores beyond a selected z threshold can be excluded with `trim`.
+
+An important option is `reselect`: with `reselect = FALSE` (the default), the polynomial structure selected in the original model is held fixed, while model parameters and smoothing parameters are re-estimated in each replicate. With `reselect = TRUE`, polynomial degree selection is repeated in each replicate, thereby incorporating model-selection variability. Additional `fb_select()` options can be supplied through `fb_control`. Because repeated fitting can be computationally intensive, `parallel = TRUE` can distribute replicates over CPU cores.
+
+Below, we run `B = 1000` bootstrap replicates without and `B = 2000` with model reselection.
+
+```{r boot-subtest, eval = FALSE}
+# Bootstrap without model reselection, IQ-scale
+boot.BCCGtr34 <- boot_subtest(
+  model = mod.BCCGtr34,
+  age_name = "age",
+  normtype = "IQ",
+  B = 1000,
+  min_age = 5,
+  max_age = 20,
+  parallel = TRUE,
+  seed = 1
+)
+
+
+# Bootstrap with model reselection, Z-scale
+boot.BCCGtr34.reselect <- boot_subtest(
+  model = mod.BCCGtr34,
+  age_name = "age",
+  normtype = "Z",
+  B = 2000,
+  min_age = 5,
+  max_age = 20,
+  parallel = TRUE,
+  reselect = TRUE,
+  fb_control = list(method = "RS(30)"), # limit the maximum amount of iterations per fit to speed up calculations
+  seed = 2
+)
+```
+
+The result contains bootstrap standard errors and percentile confidence intervals in `$normtable` and `$sample`. For instance, inspecting `$normtable` around age 10 shows the original point estimate alongside the bootstrap standard error and bias-corrected percentile confidence intervals. When the corresponding normed score has been trimmed, these values are set to `NA`.
+
+```{r boot_output}
+# Table-level grid results
+boot.BCCGtr34$normtable %>%
+  filter(age == 10) %>%
+  filter(`Subtest Score` %in% c(1,20,21,22,34))
+
+# Sample-level individual results
+head(boot.BCCGtr34$sample)
+```
+
+
+
+### Inspecting Monte Carlo error
+
+A bootstrap standard error is itself estimated from the finite number of bootstrap replicates. Therefore, sufficiently many bootstrap replicates are needed to produce precise bootstrap standard errors. For bootstrap estimates of the standard error, @efron1993introduction indicate $B=200$ replicates are typically enough. When using the bootstrap to construct confidence intervals however (`$boot_ci_lower` and `$boot_ci_upper`), many more replicates are needed (e.g., at least $B=1,000$). Furthermore, tail regions and analyses with `reselect = TRUE` may require more replicates. Therefore, we generally recommend setting $B$ as high as computationally feasible (e.g., $B \geq 1,000$ for standard errors, $B \geq 10,000$ for confidence intervals, see @hesterberg2015teachers).
+
+Additionally, in `$mcse_normtable` and `$mcse_sample`, we can inspect the Monte Carlo standard errors (MCSE) of the bootstrap standard errors in both the normtables and the sample. The MCSEs (`$boot_mcse_se`) give an estimate of the precision of the bootstrap estimates themselves, and their use is recommended in @morris2019simulation. Additionally, @efron1993introduction recommend investigating the Coefficient of Variation (CV) (`$boot_cv_se`), which divides the MCSE by the value of the estimate itself. The CV of the bootstrap standard error is dimensionless, which is typically more informative, but it can fail where the bootstrap standard error is close to zero. A $CV \le 5\%$ corresponds roughly to $B \ge 200$ and can be suitable for preliminary exploration.
+
+```{r inspect-mcse}
+# Inspect relative MCSE of the bootstrap SE
+boxplot(boot.BCCGtr34$mcse_normtable$boot_cv_se,
+     main = "Distribution of Relative MCSE",
+     ylab = "Relative MCSE of Bootstrap SE",
+     col = "gray85")
+
+# Inspect largest relative mcse
+head(boot.BCCGtr34$mcse_normtable%>%arrange(desc(boot_cv_se)))
+```
+
+
+### Model Selection History
+
+When `reselect = TRUE`, we can inspect the frequency of selected polynomial structures, both in a table `$model_freq_table` and for each individual replicate (`$model_selection_history`).
+
+```{r selection-history}
+boot.BCCGtr34.reselect$model_freq_table
+```
+
+This provides insight into the stability of the selected polynomial structure across bootstrap replicates.
+
+## Precision maps
+
+Once the bootstrap procedure has produced estimates of uncertainty across the age--score grid, the results can be visually summarized in a precision heatmap with `boot_heatmap()`.
+
+The heatmap displays a grid where each block corresponds to a specific age--score combination. The blocks are shaded according to the bootstrap standard error of the standardized score. Yellower/lighter colors indicate smaller standard errors (higher precision) and purpler/darker colors indicate larger standard errors. Centile curves and observed data can be overlaid using `centiles` and `add_points = TRUE`.
+
+```{r plot-heatmap-se}
+boot_heatmap(
+  boot.BCCGtr34,
+  type = "se",
+  add_points = TRUE,
+  centiles = c(1, 5, 25, 50, 75, 95, 99),
+  centile_label_nudge = 2.0
+)
+```
+
+The precision map provides an overview of the norm stability across the age--score space. Scores outside the trimming threshold are `NA` and appear blank, giving the heatmap a jagged boundary. Standard errors are commonly smallest near the centre of the distribution and larger in the tails. They may also increase near the age boundaries, because the polynomial and spline curves lack neighboring data to stabilize estimates there.
+
+## Traditional discrete-norming benchmark
+
+Traditional norming guidelines (such as the COTAN guidelines; @egberink2026COTAN) often describe minimum sample sizes per discrete age group, such as $n = 200$, $n = 300$, or $n = 400$. These sample sizes result in a benchmark standard error of the mean test score, under the assumption of normally distributed test scores. Because precision should be evaluated not only at the level of the mean test score, but across the entire normed score region of interest, we extend these benchmarks from the mean to the entire normed score region. This will allow us to compare the sampling errors from the bootstrap against the sampling error benchmarks from traditional norming.
+
+### Traditional benchmark across the normed score region.
+
+When estimating a standard score ($z_0$) within a discrete group of size $n$ under the assumption of normality, uncertainty arises from estimating both the group mean ($\hat{\mu}$) and the group standard deviation ($\hat{\sigma}$). As derived by @cole2021sample, the standard error of an estimated $z$-score $\hat{z}_0$ under discrete norming is:
+
+\begin{equation}
+SE_{\text{benchmark}}(\hat{z}_0 ; n) = \sqrt{\frac{1 + \frac{z_0^2}{2}}{n}}
+\end{equation}
+
+The benchmark is smallest at the mean and increases toward the tails because uncertainty in the estimated standard deviation contributes more strongly for large $|z_0|$. The benchmark is naturally expressed on the z scale, but it can be transformed to any normed score that is a linear transformation of the $z$-score. For a standardized score $S = a + bz$, the benchmark standard error is $SE_{\mathrm{benchmark},S}(S;n) = b\,SE_{\mathrm{benchmark},z}(z;n)$.
+
+### Visualizing the comparison with `boot_heatmap`
+
+By comparing the empirical bootstrap standard error $\widehat{SE}_{\text{boot}}(\text{age}, z)$ with the benchmark standard error $SE_{\text{benchmark}}(z; n)$, we can evaluate across the entire continuous age–score space whether the continuous norming model estimates meet the precision benchmarks imposed on traditional norming.
+
+Two metrics are available:
+
+
+- **Difference:** $\Delta SE(age, z) = \widehat{SE}_{\mathrm{boot}}(age, z) - SE_{\mathrm{benchmark}}(z; n)$
+- **Relative Ratio:** $R(age, z) = \frac{\widehat{SE}_{\mathrm{boot}}(age, z)}{SE_{\mathrm{benchmark}}(z; n)}$
+
+A negative difference or a ratio below 1 indicates smaller estimated uncertainty than the benchmark.
+
+```{r plot-heatmap-compare}
+# Difference map for fixed-parameter model
+boot_heatmap(
+  boot.BCCGtr34,
+  type = "difference",
+  benchmark_n = 300,
+  add_points = TRUE,
+  add_contour = TRUE,
+  centiles = c(1, 5, 25, 50, 75, 95, 99),
+  centile_label_nudge = 2.0
+)
+
+# Relative ratio map
+boot_heatmap(
+  boot.BCCGtr34,
+  type = "ratio",
+  benchmark_n = 300,
+  add_points = TRUE,
+  add_contour = TRUE,
+  centiles = c(1, 5, 25, 50, 75, 95, 99),
+  centile_label_nudge = 2.0
+)
+
+# Reselected model specification across bootstrap samples
+boot_heatmap(
+  boot.BCCGtr34.reselect,
+  type = "difference",
+  benchmark_n = 300,
+  add_points = TRUE,
+  add_contour = TRUE,
+  centiles = c(1, 5, 25, 50, 75, 95, 99),
+  centile_label_nudge = 2.0
+)
+```
+
+In these heatmaps, green regions ($\text{Difference} < 0$ or $\text{Ratio} < 1{,}0$) indicate regions where the continuous norming model meets the precision benchmarks of traditional norming with a norm group of size $n = 300$. This typically happens near the centre of the distribution. 
+
+The blueish regions indicate regions where continuous norming estimates are less precise than the traditional norming benchmark. This typically occurs near the extreme ages or at the outer centiles where data density is lowest. The dashed contour line indicates the exact boundary where the continuous norming is as precise as the benchmark. Comparing `boot.BCCGtr34` against `boot.BCCGtr34.reselect` illustrates how accounting for model selection variance alters this boundary.
+
+### Note on Interpreting the Benchmark Comparison
+
+The comparison between the bootstrap standard error SE and the reference SE should not be viewed as a direct comparison between continuous and traditional norming. Instead, it serves as a practical benchmark to evaluate whether the precision of the continuous norming model satisfies established quality criteria (i.e., guidelines based on norm group sizes for traditional norming).
+
+This comparison cannot be taken as a direct comparison between both methods for several reasons:
+
+- **It does not account for bias:** This comparison focuses solely on variance (SE) and ignores estimation bias. Traditional discrete norming often introduces systematic bias (such as end-of-cohort bias) by collapsing continuous age into discrete intervals. Continuous norming avoids this bias by modeling age smoothly. While continuous models may exhibit higher variance due to model flexibility, their overall mean squared error ($\text{MSE} = \text{Bias}^2 + \text{Variance}$) is frequently lower.
+- **The standard errors capture different sources of variability:** The traditional reference SE is a theoretical formula derived under the assumption of normally distributed test scores within each norm group. In contrast, the empirical bootstrap SE reflects real-world complexities such as skewness, kurtosis, and floor and ceiling effects. Furthermore, when `reselect = TRUE`, the bootstrap also captures the uncertainty inherent in the data-driven model selection process. Because the bootstrap SE incorporates more sources of variation than the theoretical reference SE, the two metrics are not strictly comparable.
+
+## Precision at selected percentiles
+
+The function `boot_centiles()` provides a focused view of how precision evolves across age along specific centile curves (e.g., the 5th percentile, median, or 95th percentile).
+
+```{r plot-centiles}
+boot_centiles(
+  boot.BCCGtr34,
+  centiles = c(5,50,95),
+  benchmark_n = c(200, 300, 400)
+)
+
+boot_centiles(
+  boot.BCCGtr34.reselect,
+  centiles = c(5,50,95),
+  benchmark_n = c(200, 300, 400)
+)
+```
+
+At the lower age boundary (near age 5), standard errors increase steeply, especially for the 95th percentile.
+
+
+# Case 2: Precision of Composite Norms
+
+Composite scores combine standardized subtest scores. Their precision depends on the uncertainty of each subtest norm, the cross-subtest dependence structure, and the composite norming model.
+
+The function `boot_composite()` jointly resamples participants, refits the subtest models, recomputes subtest normed scores, refits the composite model, and summarizes uncertainty. The `$sample` output propagates the complete chain of uncertainty for each observed individual. The `$normtable` output conditions on a fixed composite score grid. Therefore, it is best used as a diagnostic or residual-stability check.
+
+
+## Fitting the Subtest and Composite Models
+
+We illustrate composite norming using two IDS-2 subtests: *Naming Categories* (`y7`) and *Naming Antonyms* (`y14`).
+First, we fit the subtest and composite models. In the construction of the normtables, we set `trim = Inf` so that the subtest normed scores are not rounded before the composite model is fit. Rounding may result in deviations from normality in the composite score distribution, potentially resulting in a poorer model fit of the composite score model.
+
+```{r composite-model}
+mydata1 <- shape_data(ids_data, age_name = "age", score_name = "y7",  family = "BCCGtr34")
+mod1 <- fb_select(mydata1, age_name = "age", score_name = "shaped_score", family = "BCCGtr34")
+mydata2 <- shape_data(ids_data, age_name = "age", score_name = "y14", family = "BCCGtr34")
+mod2 <- fb_select(mydata2, age_name = "age", score_name = "shaped_score", family = "BCCGtr34")
+
+normtable1 <- normtable_create(mod1, mydata1, age_name = "age", score_name = "shaped_score", trim = Inf)
+normtable2 <- normtable_create(mod2, mydata2, age_name = "age", score_name = "shaped_score", trim = Inf)
+comp_data <- composite_shape(list(y7 = normtable1, y14 = normtable2))
+comp_model <- fb_select(comp_data, age_name = "age", score_name = "z_sum", family = "NO")
+```
+
+## Running `boot_composite()`
+
+We pass the fitted subtest models and composite model to `boot_composite()`. Options include specifying custom subtest or composite score labels with `subtest_score_names` and `composite_score_name`, setting custom weighting via `weights` (defaulting to equal weights), selecting the output metric (`normtype = "Z"`, `"T"`,  `"IQ"`, or `"SS"`), and selectively enabling model reselection for subtests or the composite model with `reselect`.
+
+```{r composite-bootstrap, eval = FALSE}
+boot_comp <- boot_composite(
+  subtest_models = list(y7 = mod1, y14 = mod2),
+  composite_model = comp_model,
+  age_name = "age",
+  composite_score_name = "z_sum",
+  normtype = "Z",
+  step_size_score = 0.1,
+  B = 1000,
+  parallel = TRUE,
+  seed = 3
+)
+```
+
+## Sample-level results
+
+The sample-level result is the primary result for evaluating the stability of observed composite scores. It contains one row per observed individual and propagates uncertainty through the subtest norms, the observed subtest scores, and the composite model.
+
+```{r composite-sample}
+head(boot_comp$sample)
+```
+
+The function `boot_sample()` visualizes these observed sample-level results across age and facets them into composite-score bins (`z_bins`). The main option is `type = c("ratio", "difference", "se")`. For `type = "se"`, it plots the raw bootstrap SE per individual. For `type = "se"`, reference lines are omitted because individual normed scores vary within each bin. Types `type = "ratio"` and `type = "difference"` plot the ratio and difference, respectively, between the sample-level bootstrap SEs divided by their corresponding traditional-norming reference SE with a set `benchmark_n`. A LOESS smoothing curve can be added with `smooth = TRUE`; note that its approximation can be off, because tail bins may contain few observations.
+
+```{r composite-sample-plot}
+boot_sample(
+  boot_comp,
+  type = "ratio",
+  benchmark_n = 400,
+  z_bins = seq(-3, 3, by = 1)
+)
+
+boot_sample(
+  boot_comp,
+  type = "se",
+  benchmark_n = 400,
+  z_bins = seq(-3, 3, by = 1),
+  smooth = TRUE
+)
+```
+
+The plot typically shows the same broad pattern as the subtest precision results: composite scores are generally more stable around the middle of the age range, while standard errors are larger at the youngest and oldest ages. Boundary inflation occurs because the fitted age trends have fewer neighbouring observations at the edges of the norming range. Standard errors can also be larger in the score tails, where the normative sample is less dense.
+
+### Limitations of the sample-level analysis
+
+The sample-level result is the most relevant result for the observed individuals, but it does not paint a complete picture of composite-score uncertainty. A given composite score can be produced by many different combinations of subtest scores, while the observed sample contains only the combinations that happened to occur. This limitation is especially important in the tails, where there may be only a few observations. Therefore, `boot_sample()` is a useful empirical proxy for deciding whether observed composite scores are stable enough for use, but it does not guarantee stability for every possible subtest-score profile in the population.
+
+## Normtable-level results
+
+The composite `$normtable` output evaluates precision across a fixed evaluation grid of age and composite sum score combinations. This primarily serves as a secondary check to assess whether composite normtable results are stable across bootstrap refits. They should not be used to compute confidence intervals around individuals' composite scores, because they do not take subtest score uncertainty into account.
+
+When comparing composite norms against traditional norming benchmarks with `boot_heatmap` of `boot_centiles`, the reference SE of composite scores is calculated under the assumption of multivariate-normally distributed subtest scores with age-independent correlations. 
+Because the composite score is constructed by summing standardized subtest scores whose residuals are already centered around zero with approximately unit variance, the resulting theoretical benchmark standard error is substantially smaller than for single subtests. In fact, at the 50th percentile (e.g., $z = 0$), the theoretical benchmark standard error approaches zero because the mean of standardized normal sum scores is theoretically fixed at zero across all ages. 
+
+```{r composite-normtable}
+head(boot_comp$normtable)
+
+boot_heatmap(boot_comp, type = "se", benchmark_n = 400, add_points = TRUE)
+boot_heatmap(boot_comp, type = "difference", benchmark_n = 400, add_points = TRUE)
+boot_centiles(boot_comp, centiles = c(5, 50, 95))
+```
+
+
+### Notes on the interpretation of composite normtable-level results.
+
+
+Normtable-level bootstrap standard errors for composites are typically very small across the entire grid because they evaluate stability conditional on a fixed sum score. If the subtest models have successfully removed all age effects and the inter-subtest correlations are stationary over age, the composite score model should be flat across age. 
+
+Any systematic age trend or instability across bootstrap refits (particularly when `reselect = TRUE`) signals unmodelled age-dependency. Checking the composite model’s selection history (`$model_selection_history` or `$model_freq_table`) reveals whether this age-dependency enters through the location ($\mu$) or the scale ($\sigma$) parameter:
+
+- **Age-dependency in the mean ($\mu$):** Indicates redundant age-dependency that was not properly captured by one or more subtest models, leading to biased composite norms across age groups. Re-evaluate the subtest models.
+- **Age-dependency in the scale/variance ($\sigma$):** Can reflects genuine developmental shifts in inter-subtest covariance (such as cognitive differentiation or dedifferentiation across age spans). In this case, the multivariate-normal reference SE are no longer valid, because they do not account for additional uncertainty from age-dependent covariance estimation.
+
+---
+
+# Case 3: Sample Size Planning for Subtests
+
+While the nonparametric bootstrap resamples the observed empirical data, the parametric bootstrap simulates new raw scores directly from a (presupposed or fitted) GAMLSS model. If a plausible model is available (e.g., from a previous version of the test), this mechanism allows a priori sample size planning and study design. Specifically, test developers can simulate candidate sample sizes ($N$) and sampling distributions across age (sampling frames) to evaluate the precision of the resulting normtables before data collection begins.
+
+## Designing and Simulating Alternative Sampling Frames
+
+Using the *Naming Categories* subtest as an example, we evaluate three candidate recruitment strategies using `boot_subtest()` with `boot_type = "parametric"`:
+
+1. **Small Uniform Allocation ($N = 500$):** Equal recruitment across ages 5 to 20.
+3. **Large Uniform Allocation ($N = 1000$):** Doubled sample size under uniform sampling across ages 5 to 20.
+2. **Boundary-Enriched Allocation ($N = 1000$):** 80% uniform recruitment across ages 5 to 20, 10% oversampling at ages 5--8, and 10% oversampling at ages 17--20.
+
+As demonstrated in the nonparametric bootstrap, continuous norming models naturally have more variance near the youngest and oldest ages, because the polynomial and/or spline curves lack neighboring observations at the boundaries. By intentionally oversampling the age boundaries (e.g. allocating 10% extra to both boundaries), test developers can flatten these boundary standard error spikes without increasing the total sample size $N$ [@who2006child]. Alternatively, if the test remains valid outside of the target age range, sampling a small number of observations beyond the target age range can also stabilize the curves [@timmerman2021tutorial].
+
+```{r planning-frames}
+# Define candidate age sampling frames
+frame_uniform <- function(n) {
+  runif(n, min = 5, max = 20)
+}
+
+frame_boundary_enriched <- function(n) {
+  n_mid <- round(n * 0.80)
+  n_low <- round(n * 0.10)
+  n_high <- n - n_mid - n_low
+  c(
+    runif(n_mid, min = 5, max = 20),
+    runif(n_low, min = 5, max = 8),
+    runif(n_high, min = 17, max = 20)
+  )
+}
+```
+
+```{r simulate planning-frames, eval = FALSE}
+# Simulate Plan 1: Uniform N = 500
+plan_unif_500 <- boot_subtest(
+  model = mod.BCCGtr34,
+  age_name = "age",
+  score_name = "y7",
+  boot_type = "parametric",
+  n_sim = 500,
+  age_sampling_frame = frame_uniform,
+  normtype = "Z",
+  min_age = 5,
+  max_age = 20,
+  B = 1000,
+  parallel = TRUE,
+  seed = 123
+)
+
+# Simulate Plan 2: Uniform N = 1000
+plan_unif_1000 <- boot_subtest(
+  model = mod.BCCGtr34,
+  age_name = "age",
+  score_name = "y7",
+  boot_type = "parametric",
+  n_sim = 1000,
+  age_sampling_frame = frame_uniform,
+  normtype = "Z",
+  min_age = 5,
+  max_age = 20,
+  B = 1000,
+  parallel = TRUE,
+  seed = 123
+)
+
+# Simulate Plan 3: Boundary-Enriched N = 1000
+plan_boundary_1000 <- boot_subtest(
+  model = mod.BCCGtr34,
+  age_name = "age",
+  score_name = "y7",
+  boot_type = "parametric",
+  n_sim = 1000,
+  age_sampling_frame = frame_boundary_enriched,
+  normtype = "Z",
+  min_age = 5,
+  max_age = 20,
+  B = 1000,
+  parallel = TRUE,
+  seed = 123
+)
+```
+
+## Comparing Simulated Precision Across Study Designs
+
+To evaluate how each design controls estimation uncertainty, we plot the expected standard error curves across age for several important percentiles:
+
+```{r planning-visualization}
+# Uniform N = 500: Notice the SE spikes at ages 5 and 20
+boot_centiles(
+  plan_unif_500,
+  centiles = c(5, 50, 95)
+) + ggplot2::labs(title = "Uniform, N=500")
+
+# Uniform N = 1000: Lower standard errors across the entire continuum
+boot_centiles(
+  plan_unif_1000,
+  centiles = c(5,50, 95)
+) + ggplot2::labs(title = "Uniform, N=1000")
+
+# Uniform N = 1000: Boundary spikes are flattened with the same total N
+boot_centiles(
+  plan_boundary_1000,
+  centiles = c(5,50, 95)
+) + ggplot2::labs(title = "Boundary-enriched, N=1,000")
+```
+
+Comparing these simulated curves against accuracy benchmarks from traditional norming helps researchers and test constructors empirically justify sample size requirements and optimize age recruitment allocations prior to data collection.
+
+The resulting plots indicate that a sample size of $N = 500$ under uniform allocation is insufficient, as standard error curves across most age ranges exceed the benchmark for traditional norming with $n = 200$. Doubling the sample size to $N = 1{,}000$ yields acceptable precision across the entire range. Furthermore, comparing the two $N = 1{,}000$ designs shows that the boundary-enriched strategy successfully reduces standard errors at both age extremes compared to a strictly uniform design.
+
+## Funding
+
+Development of `normref` was supported by Dutch Research Council NWO, [grant 406.27.GO.022](https://doi.org/10.61686/YHUOB23106).
+
+# References

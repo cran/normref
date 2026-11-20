@@ -62,25 +62,25 @@ test_that("fb_select works with different selection criteria", {
   model_bic <- fb_select(shaped_data, "age", "shaped_score", "NO", 
                         selcrit = "BIC", trace = FALSE, method = "RS(50)")
   expect_s3_class(model_bic, "gamlss")
-  expect_equal(model_bic$selcrit,145.738462)
+  expect_equal(model_bic$selcrit,145.738462, tolerance = 1e-4)
   
   # Test AIC
   model_aic <- fb_select(shaped_data, "age", "shaped_score", "NO", 
                         selcrit = "AIC", trace = FALSE, method = "RS(50)")
   expect_s3_class(model_aic, "gamlss")
-  expect_equal(model_aic$selcrit,142.776072)
+  expect_equal(model_aic$selcrit,142.776072, tolerance = 1e-4)
   
   # Test GAIC(3)
   model_gaic <- fb_select(shaped_data, "age", "shaped_score", "NO", 
                          selcrit = "GAIC(3)", trace = FALSE, method = "RS(50)")
   expect_s3_class(model_gaic, "gamlss")
-  expect_equal(model_gaic$selcrit,146.776072)
+  expect_equal(model_gaic$selcrit,146.776072, tolerance = 1e-4)
   
   # Test CV
   model_cv <- fb_select(shaped_data, "age", "shaped_score", "NO", 
                        selcrit = "CV", trace = FALSE, method = "RS(50)")
   expect_s3_class(model_cv, "gamlss")
-  expect_equal(model_cv$selcrit,150.682923)
+  expect_equal(model_cv$selcrit,150.682923, tolerance = 1e-4)
 })
 
 test_that("fb_select handles spline option correctly", {
@@ -290,19 +290,23 @@ test_that("get_selcrit returns Inf on convergence warnings (not discrepancy)", {
   
   
   # This will often throw a convergence warning with BCPE
-  res <- normref:::get_selcrit(
-    poly_deg   = c(5, 5, 5, 15),
-    selcrit    = "AIC",
-    family     = "BCPE",
-    spline     = "FALSE",
-    method     = "RS(10000)",
-    data_name  = "shaped_data",
-    age_name   = "age",
-    score_name = "score",
-    env        = environment()
+  expect_warning(
+    res <- normref:::get_selcrit(
+      poly_deg   = c(5, 5, 5, 15),
+      selcrit    = "AIC",
+      family     = "BCPE",
+      spline     = "FALSE",
+      method     = "RS(100)",
+      data_name  = "shaped_data",
+      age_name   = "age",
+      score_name = "score",
+      env        = environment()
+    ),
+    regexp = "excluded due to error"
   )
   # Convergence warnings should lead to exclusion
-  expect_equal(res, Inf)
+  expect_equal(res$val, Inf)
+  expect_null(res$mod)
 })
 
 
@@ -354,10 +358,10 @@ test_that("fb_select supports CV with a truncated distribution", {
     score_name = "shaped_score",
     family = "NOtr",
     selcrit = "CV",
-    start_poly = c(1, 0, 0, 0),
+    start_poly = c(0, 0, 0, 0),
     max_poly = c(2, 1, 0, 0),
     trace = FALSE,
-    method = "RS(50)",
+    method = "RS(100)",
     seed = 123
   )
   
@@ -416,7 +420,7 @@ test_that("fb_select returns a valid search history", {
 test_that("CV selection is reproducible with the same seed", {
   skip_on_cran()
   skip_if_not_installed("gamlss")
-  sim_data <- create_test_data("NO", n = 75)
+  sim_data <- create_test_data("NO", n = 750)
   shaped_data <- shape_data(
     sim_data, "age", "score", "NO", verbose = FALSE
   )

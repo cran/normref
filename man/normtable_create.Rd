@@ -6,7 +6,7 @@
 \usage{
 normtable_create(
   model,
-  data,
+  data = NULL,
   age_name,
   score_name,
   datarel = NULL,
@@ -22,14 +22,16 @@ normtable_create(
   trim = 3,
   excel = FALSE,
   excel_name = tempfile("norms", fileext = ".xlsx"),
-  new_data = FALSE
+  new_data = NULL,
+  newdata = NULL,
+  warn_extrapolation = TRUE
 )
 }
 \arguments{
 \item{model}{a GAMLSS fitted model, for example the result of \code{\link[=fb_select]{fb_select()}}.}
 
-\item{data}{data.frame. The sample on which the model has been fitted, or new data;
-must contain the score variable (with name given in \code{score_name}) and age variable
+\item{data}{data.frame. The sample on which the model was fitted. If omitted,
+it is retrieved directly from \code{model}; must contain the score variable (with name given in \code{score_name}) and age variable
 (with name given in \code{age_name}).}
 
 \item{age_name}{string. Name of the age variable.}
@@ -40,7 +42,7 @@ must contain the score variable (with name given in \code{score_name}) and age v
 with estimated test reliability per age. If numeric, a constant reliability is assumed
 for all ages (optional, only needed for confidence intervals).}
 
-\item{normtype}{string. Norm score type: \code{"Z"} (N(0,1); default), \code{"T"} (N(50,10)), or \code{"IQ"} (N(100,15)).}
+\item{normtype}{string. Norm score type: \code{"Z"} (N(0,1); default), \code{"T"} (N(50,10)), \code{"IQ"} (N(100,15)), or \code{"SS"} (N(10,3)).}
 
 \item{min_age}{numeric. Lowest age value in the norm table; default is the first integer
 below the minimum observed age.}
@@ -73,20 +75,27 @@ Default is 3.}
 \item{excel_name}{character. Path to the Excel file. Defaults to a temporary file.
 Ignored if \code{excel = FALSE}.}
 
-\item{new_data}{data.frame. A data frame containing new values for the explanatory variables used in the model. Default is \code{NULL}.}
+\item{new_data}{logical. Deprecated; kept for backward compatibility. Use \code{newdata} instead.}
+
+\item{newdata}{data.frame. Optional new data on which sample-level norm scores
+are evaluated. If provided, full norm matrices are omitted.}
+
+\item{warn_extrapolation}{logical. If \code{TRUE} (default), a warning is issued when values in
+\code{newdata} fall outside the range of the normative sample. Set to \code{FALSE} in internal
+resampling or bootstrap routines.}
 }
 \value{
 A list of class \code{NormTable} containing:
 \itemize{
 \item \code{norm_sample}: Estimated norm scores (\code{normtype}) in the sample, trimmed at \code{trim}.
 \item \code{norm_sample_lower}, \code{norm_sample_upper}: Lower and upper \code{ci_level} confidence bounds of \code{norm_sample}.
-\item \code{norm_matrix}: Norm scores (\code{normtype}) by age (only if \code{new_data = FALSE}).
+\item \code{norm_matrix}: Norm scores (\code{normtype}) by age.
 \item \code{norm_matrix_lower}, \code{norm_matrix_upper}: Lower and upper \code{ci_level} bounds of \code{norm_matrix}.
 \item \code{znorm_sample}: Estimated Z scores in the sample.
 \item \code{cdf_sample}: Estimated percentiles in the sample.
-\item \code{cdf_matrix}: Percentile table by age (only if \code{new_data = FALSE}).
+\item \code{cdf_matrix}: Percentile table by age.
 \item \code{data}, \code{age_name}, \code{score_name}: Copies of respective function arguments.
-\item \code{pop_age}: Evaluated ages in the norm table (only if \code{new_data = FALSE}).
+\item \code{pop_age}: Evaluated ages in the norm table.
 }
 }
 \description{
@@ -135,13 +144,13 @@ newdata <- ids_data[1:5, c("age", "y14")]
 
 norm_mod_BB_newdata <- normtable_create(
   model = mod_BB_y14,
-  data = newdata,
+  newdata = newdata,
   age_name = "age",
   score_name = "y14",
-  new_data = TRUE,
   datarel = ids_rel_data
 )
 }
+
 }
 \references{
 \insertRef{timmerman2021tutorial}{normref}

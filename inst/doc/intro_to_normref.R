@@ -1,8 +1,19 @@
 ## ----setup, include = FALSE---------------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 6,
+  out.width = "100%"
 )
+
+## ----load-precomputed, include=FALSE------------------------------------------
+pre <- readRDS(system.file("extdata", "precomputed", "intro_vignette.rds",
+                           package = "normref", mustWork = TRUE))
+list2env(pre, envir = knitr::knit_global())
 
 ## ----loadlibrary, echo=TRUE, include=TRUE-------------------------------------
 library(normref)
@@ -11,39 +22,40 @@ library(gamlss.dist) # also needed for vignette
 ## ----getdata, echo=TRUE, results='hide'---------------------------------------
 get(data("ids_data"))
 
-## ----shapedata, echo=TRUE, include=TRUE---------------------------------------
-mydata_BB <- shape_data(data = ids_data,
+## ----shapedata_BB_y14, echo=TRUE, include=TRUE--------------------------------
+mydata_BB_y14 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y14",
                      family = "BB",
                      max_score = 34)
 
-## ----selectmodel_BCPE_y14, echo=TRUE, include=TRUE----------------------------
-mydata_BCPE <- shape_data(data = ids_data,
+## ----shapedata_BCPE_y14, echo=TRUE, include=TRUE------------------------------
+mydata_BCPE_y14 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y14",
                      family = "BCPE")
 
 
 ## ----selectmodel_BB_y14, echo=TRUE, include=TRUE------------------------------
-mod_BB_y14 <- fb_select(data = mydata_BB,
+mod_BB_y14 <- fb_select(data = mydata_BB_y14,
                        age_name = "age",
                        score_name = "shaped_score",
                        family = "BB",
                        selcrit = "BIC")
 
-## ----selectmodel_BCPENO_y14, echo=TRUE, include=TRUE--------------------------
-mod_BCPE_y14 <- fb_select(data = mydata_BCPE,
-                         age_name = "age",
-                         score_name = "shaped_score",
-                         family = "BCPE",
-                         selcrit = "BIC") 
-
+## ----selectmodel_NO_y14, echo=TRUE, include=TRUE------------------------------
 mod_NO_y14 <- fb_select(data = ids_data,
                       age_name = "age",
                       score_name = "y14",
                       family = "NO",
                       selcrit = "BIC")
+
+## ----selectmodel_BCPE_y14, echo=TRUE, include=TRUE, eval=FALSE----------------
+# mod_BCPE_y14<- fb_select(data = mydata_BCPE_y14,
+#                          age_name = "age",
+#                          score_name = "shaped_score",
+#                          family = "BCPE",
+#                          selcrit = "BIC")
 
 ## ----showfit, echo=TRUE, include=TRUE-----------------------------------------
 mod_BB_y14$selcrit
@@ -61,51 +73,67 @@ gamlss::wp(mod_BCPE_y14, xvar = age, ylim.worm = 2, n.inter = 4)
 ## ----plot_model_BCPE, echo=TRUE, include=TRUE, fig.width=6, fig.height=4------
 gamlss::centiles(mod_BCPE_y14, cent = c(5,25,50,75,95))
 
-## ----normtable_BCPE, echo=TRUE, include=TRUE----------------------------------
+## ----create_normtable_BCPE_excel, echo=FALSE----------------------------------
 temp_file <- tempfile(fileext = ".xlsx")
-norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
-                                      data = mydata_BCPE,
-                                      age_name = "age",
-                                      score_name = "shaped_score", 
-                                      normtype = "IQ", 
-                                      excel_name = temp_file,
-                                      excel = TRUE)
+
+## ----create_normtable_BCPE_excel2, echo=FALSE, eval = FALSE-------------------
+# norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
+#                                       data = mydata_BCPE_y14,
+#                                       age_name = "age",
+#                                       score_name = "shaped_score",
+#                                       normtype = "IQ",
+#                                       excel_name = temp_file,
+#                                       excel = TRUE)
+
+## ----create_normtable_BCPE, echo=TRUE, include=TRUE---------------------------
 head(norm_mod_BCPE_y14[["norm_matrix"]][, c(1, 11)],
      n = 15)
 
 ## ----plot_normtable_y14, echo=TRUE, include=TRUE, fig.width=6, fig.height=4----
 plot_normtable(normtable = norm_mod_BCPE_y14)
 
-## ----create_normtable_y14, echo=TRUE, results='hide'--------------------------
-get(data("ids_rel_data"))
-temp_file <- tempfile(fileext = ".xlsx")
-norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
-                                      data = mydata_BCPE,
-                                      age_name = "age",
-                                      score_name = "shaped_score",
-                                      datarel = ids_rel_data,
-                                      normtype = "IQ",
-                                      excel_name = temp_file,
-                                      excel = TRUE)
+## ----create_normtable_y14, echo=FALSE,  eval = FALSE--------------------------
+# get(data("ids_rel_data"))
+# temp_file <- tempfile(fileext = ".xlsx")
+# norm_mod_BCPE_y14  <- normtable_create(model = mod_BCPE_y14,
+#                                       data = mydata_BCPE_y14,
+#                                       age_name = "age",
+#                                       score_name = "shaped_score",
+#                                       datarel = ids_rel_data,
+#                                       normtype = "IQ",
+#                                       excel_name = temp_file,
+#                                       excel = TRUE)
 
-## ----modelnorms_y7, echo=TRUE, include=TRUE-----------------------------------
+## ----data_y7, echo=TRUE, include=TRUE-----------------------------------------
 mydata_BCPE_y7 <- shape_data(data = ids_data,
                      age_name = "age",
                      score_name = "y7",
                      family = "BCPE")
-mod_BCPE_y7 <- fb_select(data = mydata_BCPE_y7,
-                        age_name = "age",
-                        score_name = "shaped_score",
-                        family = "BCPE",
-                        selcrit = "BIC")
-norm_mod_BCPE_y7 <- normtable_create(model = mod_BCPE_y7,
+
+## ----model_y7, echo=TRUE, include=TRUE, eval = FALSE--------------------------
+# mod_BCPE_y7 <- fb_select(data = mydata_BCPE_y7,
+#                         age_name = "age",
+#                         score_name = "shaped_score",
+#                         family = "BCPE",
+#                         selcrit = "BIC")
+
+## ----norms_y7, echo=TRUE, include=TRUE----------------------------------------
+norm_mod_BCPE_y7_untrimmed <- normtable_create(model = mod_BCPE_y7,
                                     data = mydata_BCPE_y7,
                                     age_name = "age",
-                                    score_name = "shaped_score")
+                                    score_name = "shaped_score",
+                                    trim = Inf)
 
 ## ----modelnormcompositescore, echo=TRUE, include=TRUE-------------------------
-composite <- list(norm_mod_BCPE_y7,
-                  norm_mod_BCPE_y14)
+norm_mod_BCPE_y14_untrimmed <- normtable_create(model = mod_BCPE_y14,
+                                    data = mydata_BCPE_y14,
+                                    age_name = "age",
+                                    score_name = "shaped_score",
+                                    trim = Inf)
+
+
+composite <- list(norm_mod_BCPE_y7_untrimmed,
+                  norm_mod_BCPE_y14_untrimmed )
 
 composite_data <- composite_shape(normtables = composite)
 
@@ -123,14 +151,17 @@ norm_modNO_comp <- normtable_create(modNO_comp,
                                    score_name = "z_sum",
                                    cont_cor = TRUE)
 
-## ----newsamplenorm, echo=TRUE, include=TRUE-----------------------------------
+## ----newsample, echo=TRUE, include=TRUE---------------------------------------
 newdata <- ids_data[1:5,c("age","y14")]
-norm_mod_BCPE_newdata <- normtable_create(model = mod_BCPE_y14,
-                                         data = newdata,
-                                         age_name = "age",
-                                         score_name = "y14", 
-                                         new_data = TRUE,
-                                         datarel = ids_rel_data)
+
+## ----newsamplenormtable, echo=TRUE, include=TRUE, eval = FALSE----------------
+# norm_mod_BCPE_newdata <- normtable_create(model = mod_BCPE_y14,
+#                                          newdata = newdata,
+#                                          age_name = "age",
+#                                          score_name = "y14",
+#                                          datarel = ids_rel_data)
+
+## ----newsamplenorm, echo=TRUE, include=TRUE-----------------------------------
 norm_mod_BCPE_newdata[["norm_sample"]]
 
 ## ----getdata_ids_kn_data, echo=TRUE, results='hide'---------------------------
@@ -170,31 +201,36 @@ rel_est <- reliability_window(data = ids_kn_data,
                    item_variables = item_variables_kn,
                    window_width = 2)
 
-## ----calculate confidence intervals, echo=TRUE, include=TRUE------------------
-norm_mod_BCPEtr34_KN  <- normtable_create(model = mod_NOtr34_KN,
-                                     data = mydata_NOtr34,
-                                     age_name = "age_years",
-                                     score_name = "shaped_score",
-                                     datarel = rel_est,
-                                     normtype = "IQ")
+## ----calculate confidence intervals, echo=TRUE, include=TRUE, eval = FALSE----
+# norm_mod_BCPEtr34_KN  <- normtable_create(model = mod_NOtr34_KN,
+#                                      data = mydata_NOtr34,
+#                                      age_name = "age_years",
+#                                      score_name = "shaped_score",
+#                                      datarel = rel_est,
+#                                      normtype = "IQ")
 
-## ----calculate sample size homoscedasticity, echo=TRUE, include=TRUE----------
-res1 <- sample_size_poly(
-  n_groups = 5,
-  poly_degree = 3,
-  n0 = 400
-)
+## ----calculate sample size homoscedasticity, echo=TRUE, include=TRUE, eval = FALSE----
+# res1 <- sample_size_poly(
+#   n_groups = 5,
+#   poly_degree = 3,
+#   n0 = 400
+# )
+
+## ----results sample size homoscedasticity, echo=TRUE, include=TRUE------------
 res1
 
-## ----calculate sample size heteroscedasticity, echo=TRUE, include=TRUE--------
+## ----set up sample size heteroscedasticity, echo=TRUE, include=TRUE-----------
 ids_data$age_group <- cut(ids_data$age, breaks = seq(6, 18, by = 1))
 v <- tapply(ids_data$y7, ids_data$age_group, var, na.rm = TRUE)
 
-res2 <- sample_size_poly(
- n_groups = length(v),
- poly_degree = 2,
- n0 = 300,
- variances = v
- )
+## ----calculate sample size heteroscedasticity, echo=TRUE, include=TRUE, eval = FALSE----
+# res2 <- sample_size_poly(
+#  n_groups = length(v),
+#  poly_degree = 2,
+#  n0 = 300,
+#  variances = v
+#  )
+
+## ----results sample size heteroscedasticity, echo=TRUE, include=TRUE----------
 res2
 

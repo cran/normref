@@ -26,7 +26,7 @@
 #'
 "ids_data"
 
-#' The ids_kn_data are simlulated data for demonstration purposes
+#' The ids_kn_data are simulated data for demonstration purposes
 #'
 #' @description The data are simulated data for demonstration purposes,
 #' akin to Test 7 (“naming categories”) of the intelligence test IDS-2 (Grob & Hagmann-von Arx, 2018).

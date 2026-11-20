@@ -43,10 +43,9 @@ test_that("gamlss models run without error for all supported distributions", {
     
     shaped <- shape_data(df, age_name = "age", score_name = "score", family = dist, max_score = 10, verbose = FALSE)
     
-    expect_error({
-           newcall <- call(pfun, shaped$Score)
-      eval(call)
-            #model <- gamlss(Score ~ age, data = shaped, family = dist, method = RS(200))
+    expect_error({suppressWarnings({
+           newcall <- call(pfun, shaped$shaped_score)
+           eval(newcall)})
     }, NA, info = paste("gamlss should run without error for family:", dist))
   }})
 

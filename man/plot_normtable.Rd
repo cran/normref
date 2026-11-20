@@ -35,7 +35,7 @@ with \code{new_data = FALSE}).}
 \item{ylab}{y-axis label (default: \code{"Percentile"}).}
 
 \item{...}{additional graphical parameters passed to
-\code{\link[graphics:plot.default]{graphics::plot()}}, \code{\link[graphics:lines]{graphics::lines()}}, or \code{\link[graphics:points]{graphics::points()}}.}
+\code{\link[graphics:plot]{graphics::plot()}}, \code{\link[graphics:lines]{graphics::lines()}}, or \code{\link[graphics:points]{graphics::points()}}.}
 }
 \value{
 graphical output and the \code{ggplot} object used to create it.

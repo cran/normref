@@ -21,7 +21,7 @@ shape_data(
 \item{score_name}{string. Name of the score variable.}
 
 \item{family}{string. For example, \code{"BB"}, \code{"BCPE"}, \code{"NO"}, etc.
-See \link[gamlss.dist:gamlss.family]{gamlss.dist::gamlss.family} for more information on available distributions. Also accepts user-defined distributions like truncated distributions, see \code{\link[gamlss.tr:gen.trun]{gamlss.tr::gen.trun()}}.}
+See \link[gamlss.dist:gamlss.family]{gamlss.dist::gamlss.family} for more information on available distributions. Also accepts user-defined distributions like truncated distributions.}
 
 \item{max_score}{numeric. Highest possible score in the norm table.
 Defaults to the maximum observed score in the sample.}
@@ -46,7 +46,7 @@ Unexpected transformations should prompt inspection of the original data.
 Note that the function does \strong{not} assess whether the chosen family is appropriate
 for the data. It only ensures compatibility.
 
-Compatible with all gamlss distributions, with the exception of distributions in the multinomial family (\link[gamlss:binom]{gamlss::.gamlss.multin.list}).
+Compatible with all gamlss distributions, with the exception of distributions in the multinomial family (\link[gamlss:.gamlss.multin.list]{gamlss::.gamlss.multin.list}).
 This includes user-defined distributions, such as truncated distributions.
 }
 \examples{
